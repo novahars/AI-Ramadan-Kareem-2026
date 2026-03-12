@@ -6,6 +6,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
+import { createClient } from '@supabase/supabase-js';
 import {
   Utensils,
   Heart,
@@ -21,8 +22,16 @@ import {
   XCircle,
   Search,
   ArrowRight,
-  Headphones
+  Headphones,
+  LogIn,
+  LogOut,
+  User
 } from 'lucide-react';
+
+// --- Supabase Initialization ---
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 // --- Data & Types ---
 
@@ -205,6 +214,10 @@ const Card = ({ children, title, icon: Icon, delay = 0 }: { children: React.Reac
 );
 
 export default function App() {
+  // Auth State
+  const [user, setUser] = useState<any>(null);
+  const [showSyncPrompt, setShowSyncPrompt] = useState(false);
+
   // AI State
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -248,15 +261,119 @@ export default function App() {
     reason: string;
   } | null>(null);
 
+  // --- Auth & Sync Logic ---
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const newUser = session?.user ?? null;
+      if (!user && newUser) {
+        // Just logged in
+        const localJuz = localStorage.getItem('ramadan_juz');
+        const localTarawih = localStorage.getItem('ramadan_tarawih');
+        if (localJuz || localTarawih) {
+          setShowSyncPrompt(true);
+        }
+      }
+      setUser(newUser);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [user]);
+
+  const loginWithGoogle = async () => {
+    if (!supabase) {
+      alert("Supabase belum dikonfigurasi. Silakan atur VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY di environment variables.");
+      return;
+    }
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+  };
+
+  const logout = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  const syncDataToCloud = async () => {
+    if (!user || !supabase) return;
+    const localJuz = Number(localStorage.getItem('ramadan_juz') || 0);
+    const localTarawih = Number(localStorage.getItem('ramadan_tarawih') || 0);
+
+    try {
+      const { error } = await supabase
+        .from('user_data')
+        .upsert({
+          id: user.id,
+          juz: localJuz,
+          tarawih: localTarawih,
+          updated_at: new Date().toISOString()
+        });
+
+      if (!error) {
+        setShowSyncPrompt(false);
+        // Refresh state from cloud
+        setCurrentJuz(localJuz);
+        setTarawihNights(localTarawih);
+      }
+    } catch (e) {
+      console.error("Sync error:", e);
+    }
+  };
+
+  // Fetch Cloud Data
+  useEffect(() => {
+    const fetchCloudData = async () => {
+      if (!user || !supabase) return;
+      const { data, error } = await supabase
+        .from('user_data')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (data && !error) {
+        setCurrentJuz(data.juz);
+        setTarawihNights(data.tarawih);
+        if (data.mood) {
+          const moodObj = MOODS.find(m => m.label === data.mood);
+          if (moodObj) setSelectedMood(moodObj);
+        }
+      }
+    };
+    fetchCloudData();
+  }, [user]);
+
   // Fetch Gold Price
   // Persist Ibadah
   useEffect(() => {
     localStorage.setItem('ramadan_juz', currentJuz.toString());
-  }, [currentJuz]);
+    if (user && supabase) {
+      supabase.from('user_data').upsert({ id: user.id, juz: currentJuz, updated_at: new Date().toISOString() });
+    }
+  }, [currentJuz, user]);
 
   useEffect(() => {
     localStorage.setItem('ramadan_tarawih', tarawihNights.toString());
-  }, [tarawihNights]);
+    if (user && supabase) {
+      supabase.from('user_data').upsert({ id: user.id, tarawih: tarawihNights, updated_at: new Date().toISOString() });
+    }
+  }, [tarawihNights, user]);
+
+  useEffect(() => {
+    if (user && selectedMood && supabase) {
+      supabase.from('user_data').upsert({ id: user.id, mood: selectedMood.label, updated_at: new Date().toISOString() });
+    }
+  }, [selectedMood, user]);
 
   useEffect(() => {
     const randomIdx = Math.floor(Math.random() * HADITHS.length);
@@ -267,13 +384,26 @@ export default function App() {
     const fetchGoldPrice = async () => {
       setIsGoldLoading(true);
       try {
-        const res = await fetch('https://logam-mulia-api.vercel.app/prices/antam');
+        // Using a more reliable public API endpoint for Antam gold prices if possible
+        // or adding a timeout to the fetch
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const res = await fetch('https://logam-mulia-api.vercel.app/prices/antam', {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
         const data = await res.json();
         if (data && data.data && data.data[0] && data.data[0].price) {
           setGoldPrice(data.data[0].price);
+        } else {
+          throw new Error("Invalid data format");
         }
       } catch (e) {
-        console.error("Failed to fetch gold price", e);
+        console.warn("Using fallback gold price due to fetch failure:", e);
+        // Fallback to a reasonable current market price (~1.45M IDR/gram)
+        setGoldPrice(1450000); 
       } finally {
         setIsGoldLoading(false);
       }
@@ -366,11 +496,20 @@ export default function App() {
     }
   };
 
-  const nisabValue = useMemo(() => {
+const nisabValue = useMemo(() => {
     return goldPrice > 0 ? goldPrice * 85 : DEFAULT_NISAB_GOLD;
   }, [goldPrice]);
 
-  const zakatMaal = useMemo(() => savingsValue * 0.025, [savingsValue]);
+  // Modifikasi di sini:
+  const zakatMaal = useMemo(() => {
+    // Jika tabungan kurang dari nisab, maka zakatnya 0
+    if (savingsValue < nisabValue) {
+      return 0;
+    }
+    // Jika sudah mencapai atau lebih, hitung 2.5%
+    return savingsValue * 0.025;
+  }, [savingsValue, nisabValue]);
+
   const dailySedekah = useMemo(() => savingsValue > 0 ? (savingsValue * 0.01) / 30 : 0, [savingsValue]);
 
   const isWajibZakat = savingsValue >= nisabValue;
@@ -404,6 +543,78 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-islamic-green-dark text-[#F5F5F5] font-sans selection:bg-gold/30 scroll-smooth">
+      
+      {/* Auth Button */}
+      <div className="fixed top-6 right-6 z-50">
+        {user ? (
+          <div className="flex items-center gap-3 bg-white/5 backdrop-blur-md border border-gold/20 p-2 pl-4 rounded-full shadow-xl">
+            <div className="text-right hidden sm:block">
+              <p className="text-[10px] uppercase font-black text-gold tracking-widest">Connected</p>
+              <p className="text-xs font-bold text-white truncate max-w-[120px]">{user.user_metadata?.full_name || user.email}</p>
+            </div>
+            <div className="w-10 h-10 rounded-full border-2 border-gold overflow-hidden bg-gold/20 flex items-center justify-center">
+              {user.user_metadata?.avatar_url ? (
+                <img src={user.user_metadata.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <User size={20} className="text-gold" />
+              )}
+            </div>
+            <button 
+              onClick={logout}
+              className="p-2.5 hover:bg-red-500/20 text-white/40 hover:text-red-400 rounded-full transition-all"
+              title="Logout"
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
+        ) : (
+          <button 
+            onClick={loginWithGoogle}
+            className="flex items-center gap-3 bg-white/5 backdrop-blur-md border border-gold/20 px-6 py-3 rounded-full text-sm font-black text-white hover:bg-gold/10 hover:border-gold/50 transition-all shadow-xl group"
+          >
+            <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center p-1">
+              <svg viewBox="0 0 24 24" className="w-full h-full"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            </div>
+            Masuk dengan Google
+          </button>
+        )}
+      </div>
+
+      {/* Sync Prompt */}
+      <AnimatePresence>
+        {showSyncPrompt && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-md bg-gold p-6 rounded-[2rem] shadow-2xl border-4 border-islamic-green-dark"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-islamic-green-dark rounded-2xl text-gold">
+                <Sparkles size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-islamic-green-dark font-black text-lg leading-tight mb-1">Pindahkan Data?</h3>
+                <p className="text-islamic-green-dark/80 text-sm font-bold mb-4">Ingin memindahkan data lokal Anda ke akun Google agar bisa diakses di device lain?</p>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={syncDataToCloud}
+                    className="flex-1 py-3 bg-islamic-green-dark text-gold rounded-xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-transform"
+                  >
+                    Ya, Pindahkan
+                  </button>
+                  <button 
+                    onClick={() => setShowSyncPrompt(false)}
+                    className="px-6 py-3 bg-islamic-green-dark/10 text-islamic-green-dark rounded-xl text-xs font-black uppercase tracking-widest hover:bg-islamic-green-dark/20 transition-all"
+                  >
+                    Nanti
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 1. Hero Section: Hadith */}
       <section className="relative min-h-[65vh] flex flex-col items-center justify-center px-4 py-16 border-b border-gold/10 overflow-hidden">
@@ -428,9 +639,14 @@ export default function App() {
             >
               <Moon className="text-gold w-16 h-16 gold-glow" />
             </motion.div>
-            <h1 className="text-5xl md:text-7xl font-black tracking-tighter">
-              Ramadan <span className="text-gold">Kareem</span> 2026
-            </h1>
+            <div className="space-y-1">
+              <h2 className="text-3xl md:text-4xl font-serif text-[#FFD700] tracking-tight italic">
+                LisanulHaq
+              </h2>
+              <h1 className="text-5xl md:text-7xl font-black tracking-tighter">
+                Ramadan <span className="text-gold">Kareem</span> 2026
+              </h1>
+            </div>
             <p className="text-gold-light font-bold tracking-[0.4em] uppercase text-sm md:text-base">
               Selamat Menunaikan Ibadah Puasa 1447H
             </p>
@@ -513,8 +729,8 @@ export default function App() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
 
           {/* 1. AI Smart Recipe */}
-          <Card title="AI Smart Recipe" icon={Utensils} delay={0.1}>
-            <p className="text-[#F5F5F5]/80 text-base mb-6">Punya bahan apa saja? Biar AI yang carikan resep kilat.</p>
+          <Card title="Healthy Sunnah Food" icon={Utensils} delay={0.1}>
+            <p className="text-[#F5F5F5]/80 text-base mb-6">Punya bahan apa saja? Biar Kami yang carikan resep kilat ala baginda Rasulullah.</p>
             <div className="space-y-6">
               <div className="relative group">
                 <textarea
@@ -576,8 +792,8 @@ export default function App() {
           </Card>
 
           {/* 2. Zakat & Sedekah Planner */}
-          <Card title="Zakat & Sedekah" icon={Coins} delay={0.2}>
-            <p className="text-[#F5F5F5]/80 text-base mb-6">Hitung kewajiban zakat maal dan rencanakan sedekah harian.</p>
+          <Card title="Zakat Calculator " icon={Coins} delay={0.2}>
+            <p className="text-[#F5F5F5]/80 text-base mb-6">Hitung kewajiban zakat maal.</p>
             <div className="space-y-6">
               <div>
                 <label className="text-xs uppercase font-black text-gold-light tracking-[0.2em] mb-3 block">Total Tabungan (IDR)</label>
@@ -593,7 +809,7 @@ export default function App() {
                 </div>
                 <div className="mt-3 bg-white/5 p-3 rounded-xl border border-white/5">
                   <p className="text-[11px] text-[#F5F5F5] italic leading-relaxed">
-                    Nisab Zakat Maal setara 85g emas. {isGoldLoading ? 'Mengambil harga emas...' : `Berdasarkan harga emas Antam hari ini: Rp ${goldPrice.toLocaleString('id-ID')}/gram.`}
+                    Nisab Zakat Maal setara 85g emas. {isGoldLoading ? 'Mengambil harga emas...' : `Harga emas: Rp ${goldPrice.toLocaleString('id-ID')}/gram.`}
                   </p>
                   <p className="text-[11px] text-[#FFD700] font-bold mt-1">
                     Total Nisab: Rp {nisabValue.toLocaleString('id-ID')}
@@ -621,14 +837,10 @@ export default function App() {
                 )}
               </AnimatePresence>
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className=" grid grid-cols-1 gap-6">
                 <div className="bg-white/5 rounded-3xl p-5 border border-white/10 shadow-inner">
                   <p className="text-xs uppercase font-black text-gold-light mb-2 tracking-wider">Zakat Maal</p>
                   <p className="text-xl font-mono font-bold text-gold">Rp {zakatMaal.toLocaleString('id-ID')}</p>
-                </div>
-                <div className="bg-white/5 rounded-3xl p-5 border border-white/10 shadow-inner">
-                  <p className="text-xs uppercase font-black text-gold-light mb-2 tracking-wider">Sedekah/Hari</p>
-                  <p className="text-xl font-mono font-bold text-gold">Rp {dailySedekah.toLocaleString('id-ID')}</p>
                 </div>
               </div>
 
