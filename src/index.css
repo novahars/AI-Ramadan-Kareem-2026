@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --color-islamic-green: #064e3b;
+  --color-islamic-green-dark: #022c22;
+  --color-gold: #FFD700;
+  --color-gold-light: #FFEC8B;
+}
+
+:root {
+  background-color: #022c22;
+  color: #f8fafc;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(212, 175, 55, 0.05) 0%, transparent 50%),
+    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 30l15-15M30 30l15 15M30 30L15 45M30 30L15 15' stroke='%23d4af37' stroke-width='0.5' stroke-opacity='0.1' fill='none'/%3E%3Ccircle cx='30' cy='30' r='2' fill='%23d4af37' fill-opacity='0.1'/%3E%3C/svg%3E");
+  background-attachment: fixed;
+}
+
+.glass-card {
+  background: rgba(6, 78, 59, 0.4);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.gold-glow {
+  filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.4));
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(2, 44, 34, 0.5);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d4af37;
+  border-radius: 10px;
+}
