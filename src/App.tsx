@@ -300,13 +300,24 @@ export default function App() {
   };
 
   const logout = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.error("Logout error:", err);
+      }
+    }
     setUser(null);
+    setShowSyncPrompt(false);
   };
 
   const syncDataToCloud = async () => {
-    if (!user || !supabase) return;
+    const activeUser = user || (supabase ? (await supabase.auth.getUser()).data.user : null);
+    if (!activeUser || !supabase) {
+      console.warn("Cannot sync: No user or Supabase client");
+      return;
+    }
+    
     const localJuz = Number(localStorage.getItem('ramadan_juz') || 0);
     const localTarawih = Number(localStorage.getItem('ramadan_tarawih') || 0);
 
@@ -314,7 +325,7 @@ export default function App() {
       const { error } = await supabase
         .from('user_data')
         .upsert({
-          id: user.id,
+          id: activeUser.id,
           juz: localJuz,
           tarawih: localTarawih,
           updated_at: new Date().toISOString()
@@ -322,12 +333,14 @@ export default function App() {
 
       if (!error) {
         setShowSyncPrompt(false);
-        // Refresh state from cloud
         setCurrentJuz(localJuz);
         setTarawihNights(localTarawih);
+      } else {
+        console.error("Sync error from Supabase:", error);
+        alert("Gagal memindahkan data. Pastikan tabel 'user_data' sudah dibuat di Supabase.");
       }
     } catch (e) {
-      console.error("Sync error:", e);
+      console.error("Sync catch error:", e);
     }
   };
 
@@ -561,7 +574,7 @@ const nisabValue = useMemo(() => {
             </div>
             <button 
               onClick={logout}
-              className="p-2.5 hover:bg-red-500/20 text-white/40 hover:text-red-400 rounded-full transition-all"
+              className="p-2.5 hover:bg-red-500/20 text-white hover:text-red-400 rounded-full transition-all cursor-pointer z-50"
               title="Logout"
             >
               <LogOut size={18} />
@@ -598,14 +611,18 @@ const nisabValue = useMemo(() => {
                 <p className="text-islamic-green-dark/80 text-sm font-bold mb-4">Ingin memindahkan data lokal Anda ke akun Google agar bisa diakses di device lain?</p>
                 <div className="flex gap-3">
                   <button 
-                    onClick={syncDataToCloud}
-                    className="flex-1 py-3 bg-islamic-green-dark text-gold rounded-xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-transform"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      syncDataToCloud();
+                    }}
+                    className="flex-1 py-3 bg-islamic-green-dark text-gold rounded-xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-transform cursor-pointer relative z-[110] pointer-events-auto"
                   >
                     Ya, Pindahkan
                   </button>
                   <button 
                     onClick={() => setShowSyncPrompt(false)}
-                    className="px-6 py-3 bg-islamic-green-dark/10 text-islamic-green-dark rounded-xl text-xs font-black uppercase tracking-widest hover:bg-islamic-green-dark/20 transition-all"
+                    className="px-6 py-3 bg-islamic-green-dark/10 text-islamic-green-dark rounded-xl text-xs font-black uppercase tracking-widest hover:bg-islamic-green-dark/20 transition-all cursor-pointer relative z-[110] pointer-events-auto"
                   >
                     Nanti
                   </button>
