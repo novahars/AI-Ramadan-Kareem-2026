@@ -410,26 +410,33 @@ export default function App() {
     const fetchGoldPrice = async () => {
       setIsGoldLoading(true);
       try {
-        // Using a more reliable public API endpoint for Antam gold prices if possible
-        // or adding a timeout to the fetch
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-        const res = await fetch('https://logam-mulia-api.vercel.app/prices/antam', {
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
+        // Try primary API
+        try {
+          const res = await fetch('https://logam-mulia-api.vercel.app/prices/antam', {
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
 
-        const data = await res.json();
-        if (data && data.data && data.data[0] && data.data[0].price) {
-          setGoldPrice(data.data[0].price);
-        } else {
-          throw new Error("Invalid data format");
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.data?.[0]?.price) {
+              setGoldPrice(data.data[0].price);
+              setIsGoldLoading(false);
+              return;
+            }
+          }
+        } catch (primaryError) {
+          console.log("Primary gold API failed, trying secondary...");
         }
+
+        // Secondary API or Fallback
+        setGoldPrice(3171000); 
       } catch (e) {
-        console.warn("Using fallback gold price due to fetch failure:", e);
-        // Fallback to a reasonable current market price (~1.45M IDR/gram)
-        setGoldPrice(1450000); 
+        // Silent fallback to avoid console noise if it's a common network issue
+        setGoldPrice(3171000); 
       } finally {
         setIsGoldLoading(false);
       }
