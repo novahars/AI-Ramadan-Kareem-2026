@@ -26,7 +26,10 @@ import {
   Headphones,
   LogIn,
   LogOut,
-  User
+  User,
+  Play,
+  Pause,
+  Volume2
 } from 'lucide-react';
 
 // --- Supabase Initialization ---
@@ -135,36 +138,36 @@ const HADITHS = [
 ];
 
 const MUROTTAL_LINKS: Record<number, string> = {
-  1: "http://j.mp/2b8SiNO",
-  2: "http://j.mp/2b8RJmQ",
-  3: "http://j.mp/2bFSrtF",
-  4: "http://j.mp/2b8SXi3",
-  5: "http://j.mp/2b8RZm3",
-  6: "http://j.mp/28MBohs",
-  7: "http://j.mp/2bFRIZC",
-  8: "http://j.mp/2bufF7o",
-  9: "http://j.mp/2byr1bu",
-  10: "http://j.mp/2bHfyUH",
-  11: "http://j.mp/2bHf80y",
-  12: "http://j.mp/2bWnTby",
-  13: "http://j.mp/2bFTiKQ",
-  14: "http://j.mp/2b8SUTA",
-  15: "http://j.mp/2bFRQIM",
-  16: "http://j.mp/2b8SegG",
-  17: "http://j.mp/2brHsFz",
-  18: "http://j.mp/2b8SCfc",
-  19: "http://j.mp/2bFSq95",
-  20: "http://j.mp/2brI1zc",
-  21: "http://j.mp/2b8VcBO",
-  22: "http://j.mp/2bFRxNP",
-  23: "http://j.mp/2brItxm",
-  24: "http://j.mp/2brHKw5",
-  25: "http://j.mp/2brImlf",
-  26: "http://j.mp/2bFRHF2",
-  27: "http://j.mp/2bFRXno",
-  28: "http://j.mp/2brI3ai",
-  29: "http://j.mp/2bFRyBF",
-  30: "http://j.mp/2bFREcc"
+  1: "https://j.mp/2b8SiNO",
+  2: "https://j.mp/2b8RJmQ",
+  3: "https://j.mp/2bFSrtF",
+  4: "https://j.mp/2b8SXi3",
+  5: "https://j.mp/2b8RZm3",
+  6: "https://j.mp/28MBohs",
+  7: "https://j.mp/2bFRIZC",
+  8: "https://j.mp/2bufF7o",
+  9: "https://j.mp/2byr1bu",
+  10: "https://j.mp/2bHfyUH",
+  11: "https://j.mp/2bHf80y",
+  12: "https://j.mp/2bWnTby",
+  13: "https://j.mp/2bFTiKQ",
+  14: "https://j.mp/2b8SUTA",
+  15: "https://j.mp/2bFRQIM",
+  16: "https://j.mp/2b8SegG",
+  17: "https://j.mp/2brHsFz",
+  18: "https://j.mp/2b8SCfc",
+  19: "https://j.mp/2bFSq95",
+  20: "https://j.mp/2brI1zc",
+  21: "https://j.mp/2b8VcBO",
+  22: "https://j.mp/2bFRxNP",
+  23: "https://j.mp/2brItxm",
+  24: "https://j.mp/2brHKw5",
+  25: "https://j.mp/2brImlf",
+  26: "https://j.mp/2bFRHF2",
+  27: "https://j.mp/2bFRXno",
+  28: "https://j.mp/2brI3ai",
+  29: "https://j.mp/2bFRyBF",
+  30: "https://j.mp/2bFREcc"
 };
 
 const DEFAULT_NISAB_GOLD = 258825000; // Fallback nisab
@@ -250,6 +253,12 @@ export default function App() {
   const [isRecipeLoading, setIsRecipeLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
+  // Murottal State
+  const [isPlayingMurottal, setIsPlayingMurottal] = useState(false);
+  const [murottalError, setMurottalError] = useState<string | null>(null);
+  const murottalRef = useRef<HTMLAudioElement | null>(null);
+  const [murottalLink, setMurottalLink] = useState(''); 
+
   // Favorites State
   const [favorites, setFavorites] = useState<any[]>([]);
   const [isFavoritesLoading, setIsFavoritesLoading] = useState(false);
@@ -262,6 +271,7 @@ export default function App() {
     name: string;
     instructions: string;
     time: string;
+    source: string;
     reason: string;
   } | null>(null);
   const [copiedRecipe, setCopiedRecipe] = useState(false);
@@ -292,6 +302,7 @@ export default function App() {
     arabic: string;
     latin: string;
     translation: string;
+    source: string;
     reason: string;
   } | null>(null);
 
@@ -546,15 +557,15 @@ export default function App() {
     return favorites.some(f => f.type === type && JSON.stringify(f.content) === JSON.stringify(content));
   };
 
-  const speakSequence = (arabic: string, translation: string, onFinish?: () => void) => {
+  const speakSequence = (arabic: string, translation: string, source: string, onFinish?: () => void) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       
       const arabicUtterance = new SpeechSynthesisUtterance(arabic);
       arabicUtterance.lang = 'ar-SA';
-      arabicUtterance.rate = 1.0; // Normal speed for Arabic
+      arabicUtterance.rate = 0.5; // Normal speed for Arabic
       
-      const translationUtterance = new SpeechSynthesisUtterance(translation);
+      const translationUtterance = new SpeechSynthesisUtterance(`${translation}. Hadits Riwayat ${source}`);
       translationUtterance.lang = 'id-ID';
       translationUtterance.rate = 1.05; // Keep Indonesian speed
 
@@ -625,10 +636,11 @@ export default function App() {
         name: data.content["arabic"],
         instructions: data.content["translation"],
         time: "< 20 min",
+        source: data.content["source"],
         reason: data.content["explanation"]
       };
       setMatchedRecipe(newRecipe);
-      speakSequence(newRecipe.name, newRecipe.instructions, () => {
+      speakSequence(newRecipe.name, newRecipe.instructions, data.content["source"], () => {
         if (!user) setShowLoginPrompt(true);
       });
     }
@@ -643,12 +655,41 @@ export default function App() {
         arabic: data.content["arabic"],
         latin: data.content["latin"],
         translation: data.content["translation"],
+        source: data.content["source"],
         reason: data.content["explanation"]
       };
       setAiHadith(newHadith);
-      speakSequence(newHadith.arabic, newHadith.translation, () => {
+      speakSequence(newHadith.arabic, newHadith.translation, newHadith.source, () => {
         if (!user) setShowLoginPrompt(true);
       });
+    }
+  };
+
+  const toggleMurottal = () => {
+    if (!murottalRef.current) return;
+    if (isPlayingMurottal) {
+      murottalRef.current.pause();
+    } else {
+      murottalRef.current.play();
+    }
+    setIsPlayingMurottal(!isPlayingMurottal);
+  };
+
+  const playJuz = (juz: number) => {
+    const link = MUROTTAL_LINKS[juz];
+    if (link) {
+      setMurottalLink(link);
+      setIsPlayingMurottal(true);
+      setMurottalError(null);
+      if (murottalRef.current) {
+        murottalRef.current.src = link;
+        murottalRef.current.load(); // Force reload
+        murottalRef.current.play().catch(err => {
+          console.error("Playback failed:", err);
+          setMurottalError("Gagal memutar audio. Link mungkin tidak didukung atau terblokir.");
+          setIsPlayingMurottal(false);
+        });
+      }
     }
   };
 
@@ -826,7 +867,10 @@ const nisabValue = useMemo(() => {
               <div className="space-y-6">
                 <div className="flex justify-center gap-4 mb-4">
                   <button
-                    onClick={() => speakSequence(aiHadith ? aiHadith.arabic : randomHadith.arabic, aiHadith ? aiHadith.translation : randomHadith.translation)}
+                    onClick={() => {
+                      const h = aiHadith || randomHadith;
+                      speakSequence(h.arabic, h.translation, h.source);
+                    }}
                     className="p-2 bg-gold/10 text-gold rounded-full hover:bg-gold/20 transition-all"
                     title="Dengarkan"
                   >
@@ -860,6 +904,9 @@ const nisabValue = useMemo(() => {
                   {aiHadith ? (
                     <Markdown>{aiHadith.translation}</Markdown>
                   ) : randomHadith.translation}
+                </p>
+                <p className="text-sm text-gold font-bold mt-2">
+                  ( {aiHadith ? aiHadith.source : randomHadith.source})
                 </p>
                 {aiHadith && (
                   <div className="bg-gold/10 p-4 rounded-2xl border border-gold/20 max-w-xl mx-auto text-left">
@@ -1088,15 +1135,52 @@ const nisabValue = useMemo(() => {
                 </div>
 
                 {currentJuz > 0 && (
-                  <motion.button
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    onClick={() => window.open(MUROTTAL_LINKS[currentJuz], '_blank')}
-                    className="flex items-center justify-center gap-2 w-full py-3 bg-white/5 border border-[#FFD700]/20 rounded-xl text-xs font-black text-[#FFD700] hover:bg-[#FFD700]/10 transition-all uppercase tracking-widest"
-                  >
-                    <Headphones size={14} />
-                    Putar Murottal Juz {currentJuz}
-                  </motion.button>
+                  <div className="space-y-4">
+                    <motion.button
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      onClick={() => playJuz(currentJuz)}
+                      className="flex items-center justify-center gap-2 w-full py-3 bg-gold text-islamic-green-dark rounded-xl text-xs font-black hover:bg-gold-light transition-all uppercase tracking-widest shadow-lg"
+                    >
+                      <Headphones size={14} />
+                      Putar Murottal Juz {currentJuz}
+                    </motion.button>
+
+                    {/* Integrated Murottal Player */}
+                    <AnimatePresence>
+                      {(murottalLink || murottalError) && (
+                        <motion.div 
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          className={`bg-white/5 border ${murottalError ? 'border-red-500/50' : 'border-gold/20'} p-4 rounded-2xl flex flex-col gap-3`}
+                        >
+                          <div className="flex items-center gap-4">
+                            <button
+                              onClick={toggleMurottal}
+                              disabled={!!murottalError}
+                              className={`p-3 ${murottalError ? 'bg-gray-500' : 'bg-gold'} text-islamic-green-dark rounded-full hover:scale-110 transition-all shadow-lg`}
+                            >
+                              {isPlayingMurottal ? <Pause size={18} /> : <Play size={18} />}
+                            </button>
+                            <div className="flex-1 flex flex-col min-w-0">
+                              <span className="text-[10px] text-gold uppercase font-black tracking-widest mb-1">
+                                {murottalError ? 'Error' : 'Sedang Diputar'}
+                              </span>
+                              <p className="text-white text-xs truncate font-medium">
+                                {murottalError ? murottalError : (currentJuz > 0 ? `Juz ${currentJuz}` : 'Custom Audio')}
+                              </p>
+                            </div>
+                            {!murottalError && <Volume2 size={16} className="text-gold/50" />}
+                          </div>
+                          {murottalError && (
+                            <p className="text-[10px] text-red-400 italic">
+                              Tips: Pastikan browser mengizinkan audio dari sumber luar atau coba Juz lain.
+                            </p>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 )}
               </div>
 
@@ -1316,6 +1400,17 @@ const nisabValue = useMemo(() => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <audio 
+        ref={murottalRef} 
+        src={murottalLink} 
+        onEnded={() => setIsPlayingMurottal(false)}
+        onError={(e) => {
+          console.error("Audio error:", e);
+          setMurottalError("Gagal memuat audio. Link mungkin tidak didukung atau terblokir oleh browser.");
+          setIsPlayingMurottal(false);
+        }}
+      />
 
       {/* Login Prompt Popup */}
       <AnimatePresence>
