@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import Markdown from 'react-markdown';
 import { GoogleGenAI, Type } from "@google/genai";
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -172,20 +173,43 @@ const DEFAULT_NISAB_GOLD = 258825000; // Fallback nisab
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 const ramadanAISystemInstruction = `
-Kamu adalah Ramadan Intelligence Engine. Kamu memiliki dua mode fungsi:
+Kamu adalah LisanulHaq Intelligence.
+Misi Utama: Menjadi asisten spiritual & kesehatan yang empati, ringkas, dan akurat.
 
-1. Search Hadits: Jika user mencari topik, berikan hadits shahih yang relevan secara SEMANTIK (pahami makna, bukan cuma kata kunci).
-2. AI Recipe: Jika user input bahan atau kondisi fisik, berikan resep sahur/buka yang sehat, cepat (<20 menit), dan jelaskan alasan logisnya (Agentic Reasoning).
+Response Protocols (Strict):
+
+1. Kategori EMOSI (Priority):
+   - Deteksi kata kunci: sedih, marah, kesal, gagal, stres.
+   - Alur: [Empati] + [1 Hadits Pendek] + [1 Tips Sunnah Praktis].
+   - Nada: Menenangkan & suportif (Warm).
+   - Mapping JSON: Masukkan [Empati] dan [Tips Sunnah] ke field "explanation". Hadits ke field "arabic" dan "translation".
+
+2. Kategori HADITS:
+   - Format Konten: [Perawi] | [Teks Arab (Gunakan harakat)] | [Terjemahan] | [Syarah Singkat (Max 2 kalimat)].
+   - Anti-Halusinasi: Jika tidak ditemukan/ragu, gunakan pesan: "Mohon maaf Kak, saya tidak menemukan referensi hadits yang cukup kuat untuk hal tersebut."
+   - Mapping JSON: "source"=[Perawi], "arabic"=[Teks Arab], "translation"=[Terjemahan], "explanation"=[Syarah Singkat].
+
+3. Kategori RESEP THAYYIB:
+   - Format Konten: [Nama Menu] | [Bahan Utama] | [Cara Singkat] | [Sisi Medis & Sunnah].
+   - Syarat: Sehat (minim gula pasir/minyak jenuh).
+   - Mapping JSON: "arabic"=[Nama Menu], "latin"=[Bahan Utama], "translation"=[Cara Singkat], "source"=[Sisi Medis & Sunnah].
+
+Aturan Teknis:
+- Max Words: 150 kata per respons.
+- Language: Bahasa Indonesia modern (Kak/Saudaraku).
+- Formatting: Gunakan Bold untuk poin penting dan Bullet Points.
+- Out-of-Scope: Jika user tanya di luar Islam, kesehatan, atau motivasi, jawab: "Mohon maaf Kak, LisanulHaq fokus pada kesehatan dan spiritualitas Islam. Ada yang bisa saya bantu terkait hal tersebut?" (Masukkan pesan ini ke field "explanation" dan set "type" ke "hadith").
+- No Chatty: Jangan bertele-tele di pembukaan. Langsung ke solusi.
 
 FORMAT OUTPUT (WAJIB JSON):
 {
   "type": "recipe" atau "hadith",
   "content": {
-    "arabic": "Teks Arab (atau Judul Resep)",
-    "latin": "Transliterasi (atau Langkah Singkat)",
-    "translation": "Arti (atau Instruksi Lengkap)",
-    "source": "Riwayat (atau Kategori Resep)",
-    "explanation": "Tuliskan penjelasan mendalam (Syarah) mengenai hadits atau resep ini. Gunakan gaya bahasa 'Pendapat para ulama' atau 'Intisari hikmah'. Jelaskan makna dalam konteks kehidupan sehari-hari, terutama di bulan Ramadan. Hindari kata 'AI mengidentifikasi', gunakan kata seperti 'Para ulama menjelaskan bahwa...' atau 'Hikmah dari hal ini adalah...'"
+    "arabic": "string",
+    "latin": "string",
+    "translation": "string",
+    "source": "string",
+    "explanation": "string"
   }
 }
 `;
@@ -222,8 +246,15 @@ export default function App() {
   const isInitialLoadRef = useRef(true);
 
   // AI State
-  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isHadithLoading, setIsHadithLoading] = useState(false);
+  const [isRecipeLoading, setIsRecipeLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  // Favorites State
+  const [favorites, setFavorites] = useState<any[]>([]);
+  const [isFavoritesLoading, setIsFavoritesLoading] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
   // Recipe State
   const [ingredients, setIngredients] = useState('');
@@ -458,8 +489,88 @@ export default function App() {
     return Number(savingsInput.replace(/\./g, '')) || 0;
   }, [savingsInput]);
 
-  const callRamadanAI = async (prompt: string) => {
-    setIsAiLoading(true);
+  // Fetch Favorites
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      if (!user?.id || !supabase) return;
+      setIsFavoritesLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('favorites')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (data && !error) {
+          setFavorites(data);
+        }
+      } catch (e) {
+        console.error("Fetch favorites error:", e);
+      } finally {
+        setIsFavoritesLoading(false);
+      }
+    };
+    fetchFavorites();
+  }, [user?.id]);
+
+  const toggleFavorite = async (type: 'hadith' | 'recipe', content: any) => {
+    if (!user?.id || !supabase) {
+      alert("Silakan login untuk menyimpan favorit.");
+      return;
+    }
+
+    const existing = favorites.find(f => f.type === type && JSON.stringify(f.content) === JSON.stringify(content));
+
+    if (existing) {
+      // Remove
+      const { error } = await supabase.from('favorites').delete().eq('id', existing.id);
+      if (!error) {
+        setFavorites(favorites.filter(f => f.id !== existing.id));
+      }
+    } else {
+      // Add
+      const { data, error } = await supabase.from('favorites').insert({
+        user_id: user.id,
+        type,
+        content,
+        created_at: new Date().toISOString()
+      }).select().single();
+
+      if (data && !error) {
+        setFavorites([data, ...favorites]);
+      }
+    }
+  };
+
+  const isFavorited = (type: 'hadith' | 'recipe', content: any) => {
+    return favorites.some(f => f.type === type && JSON.stringify(f.content) === JSON.stringify(content));
+  };
+
+  const speakSequence = (arabic: string, translation: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      
+      const arabicUtterance = new SpeechSynthesisUtterance(arabic);
+      arabicUtterance.lang = 'ar-SA';
+      arabicUtterance.rate = 1.05; 
+      
+      const translationUtterance = new SpeechSynthesisUtterance(translation);
+      translationUtterance.lang = 'id-ID';
+      translationUtterance.rate = 1.05;
+
+      window.speechSynthesis.speak(arabicUtterance);
+      window.speechSynthesis.speak(translationUtterance);
+    } else {
+      alert("Maaf, browser Anda tidak mendukung fitur suara.");
+    }
+  };
+
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+  };
+
+  const callRamadanAI = async (prompt: string, setLoading: (l: boolean) => void) => {
+    setLoading(true);
     setAiError(null);
     try {
       const response = await genAI.models.generateContent({
@@ -497,33 +608,41 @@ export default function App() {
       setAiError("Gagal menghubungi Ramadan Intelligence Engine. Coba lagi nanti.");
       return null;
     } finally {
-      setIsAiLoading(false);
+      setLoading(false);
     }
   };
 
   const findRecipe = async () => {
     if (!ingredients.trim()) return;
-    const data = await callRamadanAI(`Berikan resep sahur/buka berdasarkan input ini: ${ingredients}`);
+    const moodContext = selectedMood ? `User sedang merasa ${selectedMood.label}. ` : "";
+    const data = await callRamadanAI(`${moodContext}Berikan resep sahur/buka berdasarkan input ini: ${ingredients}`, setIsRecipeLoading);
     if (data && data.type === 'recipe') {
-      setMatchedRecipe({
+      const newRecipe = {
         name: data.content["arabic"],
         instructions: data.content["translation"],
         time: "< 20 min",
         reason: data.content["explanation"]
-      });
+      };
+      setMatchedRecipe(newRecipe);
+      speakSequence(newRecipe.name, newRecipe.instructions);
+      if (!user) setShowLoginPrompt(true);
     }
   };
 
   const searchHadithAI = async () => {
     if (!hadithSearch.trim()) return;
-    const data = await callRamadanAI(`Cari hadits shahih yang relevan dengan topik: ${hadithSearch}`);
+    const moodContext = selectedMood ? `User sedang merasa ${selectedMood.label}. ` : "";
+    const data = await callRamadanAI(`${moodContext}Cari hadits shahih yang relevan dengan topik: ${hadithSearch}`, setIsHadithLoading);
     if (data && data.type === 'hadith') {
-      setAiHadith({
+      const newHadith = {
         arabic: data.content["arabic"],
         latin: data.content["latin"],
         translation: data.content["translation"],
         reason: data.content["explanation"]
-      });
+      };
+      setAiHadith(newHadith);
+      speakSequence(newHadith.arabic, newHadith.translation);
+      if (!user) setShowLoginPrompt(true);
     }
   };
 
@@ -576,7 +695,16 @@ const nisabValue = useMemo(() => {
     <div className="min-h-screen bg-islamic-green-dark text-[#F5F5F5] font-sans selection:bg-gold/30 scroll-smooth">
       
       {/* Auth Button */}
-      <div className="fixed top-6 right-6 z-50">
+      <div className="fixed top-6 right-6 z-50 flex items-center gap-3">
+        {user && (
+          <button
+            onClick={() => setShowFavorites(!showFavorites)}
+            className="p-3 bg-white/5 backdrop-blur-md border border-gold/20 rounded-full text-gold hover:bg-gold/10 transition-all shadow-xl"
+            title="Favorit Saya"
+          >
+            <Heart size={20} fill={showFavorites ? "currentColor" : "none"} />
+          </button>
+        )}
         {user ? (
           <div className="flex items-center gap-3 bg-white/5 backdrop-blur-md border border-gold/20 p-2 pl-4 rounded-full shadow-xl">
             <div className="text-right hidden sm:block">
@@ -664,7 +792,7 @@ const nisabValue = useMemo(() => {
             />
             <button 
               onClick={searchHadithAI}
-              disabled={isAiLoading}
+              disabled={isHadithLoading}
               className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-gold text-islamic-green-dark rounded-full hover:bg-gold-light transition-all disabled:opacity-50"
             >
               <ArrowRight size={18} />
@@ -680,7 +808,7 @@ const nisabValue = useMemo(() => {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-8 bg-white/5 backdrop-blur-md p-10 rounded-[3rem] border border-gold/10 shadow-2xl relative"
             >
-              {isAiLoading && (
+              {isHadithLoading && (
                 <div className="absolute inset-0 bg-islamic-green-dark/40 backdrop-blur-sm rounded-[3rem] flex items-center justify-center z-20">
                   <div className="flex flex-col items-center gap-4">
                     <div className="w-12 h-12 border-4 border-gold border-t-transparent rounded-full animate-spin" />
@@ -690,6 +818,31 @@ const nisabValue = useMemo(() => {
               )}
 
               <div className="space-y-6">
+                <div className="flex justify-center gap-4 mb-4">
+                  <button
+                    onClick={() => speakSequence(aiHadith ? aiHadith.arabic : randomHadith.arabic, aiHadith ? aiHadith.translation : randomHadith.translation)}
+                    className="p-2 bg-gold/10 text-gold rounded-full hover:bg-gold/20 transition-all"
+                    title="Dengarkan"
+                  >
+                    <Headphones size={20} />
+                  </button>
+                  <button
+                    onClick={stopSpeaking}
+                    className="p-2 bg-red-500/10 text-red-400 rounded-full hover:bg-red-500/20 transition-all"
+                    title="Berhenti"
+                  >
+                    <XCircle size={20} />
+                  </button>
+                  {user && (
+                    <button
+                      onClick={() => toggleFavorite('hadith', aiHadith || randomHadith)}
+                      className="p-2 bg-gold/10 text-gold rounded-full hover:bg-gold/20 transition-all"
+                      title="Simpan ke Favorit"
+                    >
+                      <Heart size={20} fill={isFavorited('hadith', aiHadith || randomHadith) ? "currentColor" : "none"} />
+                    </button>
+                  )}
+                </div>
                 <p className="text-4xl md:text-5xl font-serif text-gold leading-loose dir-rtl text-center">
                   {aiHadith ? aiHadith.arabic : randomHadith.arabic}
                 </p>
@@ -698,12 +851,16 @@ const nisabValue = useMemo(() => {
                 </p>
                 <div className="h-px w-24 bg-gold/30 mx-auto" />
                 <p className="text-xl md:text-2xl text-[#F5F5F5] font-bold leading-relaxed max-w-2xl mx-auto">
-                  {aiHadith ? aiHadith.translation : randomHadith.translation}
+                  {aiHadith ? (
+                    <Markdown>{aiHadith.translation}</Markdown>
+                  ) : randomHadith.translation}
                 </p>
                 {aiHadith && (
                   <div className="bg-gold/10 p-4 rounded-2xl border border-gold/20 max-w-xl mx-auto text-left">
                     <p className="text-xs text-gold font-black uppercase tracking-widest mb-2">Hikmah & Penjelasan Ulama</p>
-                    <p className="text-sm text-[#F5F5F5] leading-relaxed">{aiHadith.reason}</p>
+                    <div className="text-sm text-[#F5F5F5] leading-relaxed markdown-body">
+                      <Markdown>{aiHadith.reason}</Markdown>
+                    </div>
                   </div>
                 )}
                 <p className="text-sm text-gold font-black uppercase tracking-[0.2em]">
@@ -730,7 +887,15 @@ const nisabValue = useMemo(() => {
           {/* 1. AI Smart Recipe */}
           <Card title="Healthy Sunnah Food" icon={Utensils} delay={0.1}>
             <p className="text-[#F5F5F5]/80 text-base mb-6">Punya bahan apa saja? Biar Kami yang carikan resep kilat ala baginda Rasulullah.</p>
-            <div className="space-y-6">
+            <div className="space-y-6 relative">
+              {isRecipeLoading && (
+                <div className="absolute inset-0 bg-islamic-green-dark/40 backdrop-blur-sm rounded-2xl flex items-center justify-center z-20">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-8 h-8 border-3 border-gold border-t-transparent rounded-full animate-spin" />
+                    <p className="text-gold font-black uppercase tracking-widest text-[10px]">Thinking...</p>
+                  </div>
+                </div>
+              )}
               <div className="relative group">
                 <textarea
                   value={ingredients}
@@ -740,10 +905,10 @@ const nisabValue = useMemo(() => {
                 />
                 <button
                   onClick={findRecipe}
-                  disabled={isAiLoading}
+                  disabled={isRecipeLoading}
                   className="absolute right-3 bottom-3 p-2.5 bg-gold text-islamic-green-dark rounded-xl hover:bg-gold-light hover:scale-110 active:scale-95 transition-all shadow-lg disabled:opacity-50"
                 >
-                  {isAiLoading ? <div className="w-5 h-5 border-2 border-islamic-green-dark border-t-transparent rounded-full animate-spin" /> : <Zap size={20} fill="currentColor" />}
+                  <Zap size={20} fill="currentColor" />
                 </button>
               </div>
 
@@ -758,16 +923,29 @@ const nisabValue = useMemo(() => {
                   >
                     <div className="flex justify-between items-start">
                       <h3 className="text-xl font-bold text-gold-light">{matchedRecipe.name}</h3>
-                      <span className="text-xs bg-gold/20 text-gold px-3 py-1 rounded-full uppercase font-black tracking-wider">
-                        {matchedRecipe.time}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {user && (
+                          <button
+                            onClick={() => toggleFavorite('recipe', matchedRecipe)}
+                            className="p-2 bg-gold/10 text-gold rounded-full hover:bg-gold/20 transition-all"
+                            title="Simpan ke Favorit"
+                          >
+                            <Heart size={16} fill={isFavorited('recipe', matchedRecipe) ? "currentColor" : "none"} />
+                          </button>
+                        )}
+                        <span className="text-xs bg-gold/20 text-gold px-3 py-1 rounded-full uppercase font-black tracking-wider">
+                          {matchedRecipe.time}
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-base text-[#F5F5F5] leading-relaxed">
-                      {matchedRecipe.instructions}
-                    </p>
+                    <div className="text-base text-[#F5F5F5] leading-relaxed markdown-body">
+                      <Markdown>{matchedRecipe.instructions}</Markdown>
+                    </div>
                     <div className="bg-gold/10 p-4 rounded-2xl border border-gold/20">
                       <p className="text-xs text-gold font-black uppercase tracking-widest mb-1">Hikmah & Penjelasan Ulama</p>
-                      <p className="text-sm text-[#F5F5F5] leading-relaxed">{matchedRecipe.reason}</p>
+                      <div className="text-sm text-[#F5F5F5] leading-relaxed markdown-body">
+                        <Markdown>{matchedRecipe.reason}</Markdown>
+                      </div>
                     </div>
                     <button
                       onClick={() => copyToClipboard(`${matchedRecipe.name}\n\n${matchedRecipe.instructions}\n\nAI Reason: ${matchedRecipe.reason}`, setCopiedRecipe)}
@@ -777,7 +955,7 @@ const nisabValue = useMemo(() => {
                       {copiedRecipe ? 'Tersalin!' : 'Salin Resep'}
                     </button>
                   </motion.div>
-                ) : ingredients && !isAiLoading && (
+                ) : ingredients && !isRecipeLoading && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -1035,6 +1213,141 @@ const nisabValue = useMemo(() => {
           </p>
         </motion.div>
       </footer>
+
+      {/* Favorites Modal/Overlay */}
+      <AnimatePresence>
+        {showFavorites && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-islamic-green-dark/95 backdrop-blur-xl p-6 overflow-y-auto custom-scrollbar"
+          >
+            <div className="max-w-4xl mx-auto space-y-8">
+              <div className="flex justify-between items-center border-b border-gold/20 pb-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-gold/20 rounded-2xl text-gold">
+                    <Heart size={32} fill="currentColor" />
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-black text-white">Favorit Saya</h2>
+                    <p className="text-gold/60 text-sm">Koleksi hadits dan resep pilihanmu.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowFavorites(false)}
+                  className="p-3 hover:bg-white/10 rounded-full text-white transition-all"
+                >
+                  <XCircle size={32} />
+                </button>
+              </div>
+
+              {isFavoritesLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                  <div className="w-12 h-12 border-4 border-gold border-t-transparent rounded-full animate-spin" />
+                  <p className="text-gold font-black uppercase tracking-widest text-xs">Memuat Favorit...</p>
+                </div>
+              ) : favorites.length === 0 ? (
+                <div className="text-center py-20 space-y-4">
+                  <Sparkles size={48} className="mx-auto text-gold/20" />
+                  <p className="text-white/40 italic">Belum ada favorit yang disimpan.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
+                  {favorites.map((fav) => (
+                    <motion.div
+                      key={fav.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-white/5 border border-gold/20 rounded-[2rem] p-6 space-y-4 relative group"
+                    >
+                      <div className="flex justify-between items-start">
+                        <span className="text-[10px] bg-gold/20 text-gold px-3 py-1 rounded-full uppercase font-black tracking-widest">
+                          {fav.type === 'hadith' ? 'Hadits' : 'Resep'}
+                        </span>
+                        <button
+                          onClick={() => toggleFavorite(fav.type, fav.content)}
+                          className="text-red-400 hover:text-red-500 transition-all"
+                        >
+                          <XCircle size={20} />
+                        </button>
+                      </div>
+
+                      {fav.type === 'hadith' ? (
+                        <div className="space-y-4">
+                          <p className="text-2xl font-serif text-gold dir-rtl text-right">{fav.content.arabic}</p>
+                          <p className="text-sm text-white font-bold">{fav.content.translation}</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <h3 className="text-xl font-bold text-gold-light">{fav.content.name}</h3>
+                          <p className="text-sm text-white/80 line-clamp-3">{fav.content.instructions}</p>
+                        </div>
+                      )}
+                      
+                      <button
+                        onClick={() => {
+                          if (fav.type === 'hadith') {
+                            setAiHadith(fav.content);
+                            setHadithSearch('');
+                          } else {
+                            setMatchedRecipe(fav.content);
+                            setIngredients('');
+                          }
+                          setShowFavorites(false);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="w-full py-3 bg-gold/10 hover:bg-gold/20 text-gold rounded-xl text-xs font-black uppercase tracking-widest transition-all"
+                      >
+                        Lihat Detail
+                      </button>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Login Prompt Popup */}
+      <AnimatePresence>
+        {showLoginPrompt && !user && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 50 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 50 }}
+            className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[110] w-[90%] max-w-md"
+          >
+            <div className="glass-card bg-islamic-green-dark/90 border-gold/40 p-6 rounded-[2rem] shadow-2xl flex flex-col items-center text-center gap-4">
+              <div className="p-3 bg-gold/20 rounded-full text-gold">
+                <Sparkles size={32} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">Suka dengan hasil ini?</h3>
+                <p className="text-gold-light/80 text-sm mt-2">
+                  Yuk login dulu Kak, biar hadits dan resep penuh berkah ini bisa Kakak simpan di koleksi favorit! ✨
+                </p>
+              </div>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={loginWithGoogle}
+                  className="flex-1 py-3 bg-gold text-islamic-green-dark rounded-xl font-black uppercase tracking-widest text-xs hover:bg-gold-light transition-all shadow-lg"
+                >
+                  Login Sekarang
+                </button>
+                <button
+                  onClick={() => setShowLoginPrompt(false)}
+                  className="px-6 py-3 bg-white/5 text-white/60 rounded-xl font-bold text-xs hover:bg-white/10 transition-all"
+                >
+                  Nanti Saja
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
