@@ -376,30 +376,42 @@ export default function App() {
     }
   }, []);
 
-  const hijriGreeting = useMemo(() => {
-    const isRamadan = checkIsRamadan();
-    
-    // Ambil tahun Hijriah saja (misal: 1447)
-    const year = new Intl.DateTimeFormat('id-ID-u-ca-islamic-uma-nu-latn', { year: 'numeric' }).format(new Date());
-    
-    // Ambil nama bulan Hijriah untuk kondisi selain Ramadan
-    const currentHijriMonth = new Intl.DateTimeFormat('id-ID-u-ca-islamic-uma-nu-latn', { month: 'long' }).format(new Date());
+const hijriGreeting = useMemo(() => {
+  const isRamadan = checkIsRamadan();
+  const mYear = new Date().getFullYear();
 
-    if (isRamadan) {
-      return {
-        // Title tetap Ramadan Kareem 2026 (Masehi) atau mau Hijriah juga boleh
-        title: `Ramadan Kareem 2026`, 
-        // Subtitle sekarang pakai tahun Hijriah + H
-        subtitle: `Selamat Menunaikan Ibadah Puasa ${year} H`
-      };
-    } else {
-      return {
-        title: "Selamat Menjalani Aktivitas",
-        subtitle: `Bulan ${currentHijriMonth} ${year} H`
-      };
+  // --- LOGIKA PAKSA TAHUN HIJRIAH ---
+  // Rumus estimasi: (Tahun Masehi - 622) * (33/32)
+  // Ini bakal mastiin tahun 2026 dapetnya 1447, bukan 2026 lagi.
+  let hYear = Math.floor((mYear - 622) * (33 / 32));
+  
+  // Ambil Nama Bulan Hijriah dengan Fallback jika isRamadan true
+  let currentHijriMonth;
+  try {
+    currentHijriMonth = new Intl.DateTimeFormat('id-ID-u-ca-islamic-uma-nu-latn', { month: 'long' }).format(new Date());
+    // Jika ternyata browser ngasih nama bulan masehi (Maret), kita paksa jadi 'Ramadan'
+    if (isRamadan && !currentHijriMonth.toLowerCase().includes('ramada')) {
+      currentHijriMonth = "Ramadan";
     }
-  }, [hijriDate]);
+  } catch (e) {
+    currentHijriMonth = isRamadan ? "Ramadan" : "Syawal";
+  }
 
+  // Format Akhir: "1447 H / 2026"
+  const displayYearLabel = `${hYear} H / ${mYear}`;
+
+  if (isRamadan) {
+    return {
+      title: `Ramadan Kareem ${mYear}`, 
+      subtitle: `Selamat Menunaikan Ibadah Puasa ${displayYearLabel}`
+    };
+  } else {
+    return {
+      title: "Selamat Menjalani Aktivitas",
+      subtitle: `Bulan ${currentHijriMonth} ${displayYearLabel}`
+    };
+  }
+}, [hijriDate]);
   const scheduleTitle = useMemo(() => {
     const ramadanDay = getRamadanDay();
     return ramadanDay ? `Ramadan Hari ke-${ramadanDay}` : "Jadwal Shalat Harian";
