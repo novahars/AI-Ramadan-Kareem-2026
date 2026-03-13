@@ -325,6 +325,60 @@ export default function App() {
   const [showDoa, setShowDoa] = useState(false);
   const [showImsakiyahDetails, setShowImsakiyahDetails] = useState(false);
 
+  // --- Global Hijriah Sync ---
+  const hijriDate = useMemo(() => {
+    const today = new Date();
+    
+    // Get Hijriah parts (day, month index, year)
+    const numericFormatter = new Intl.DateTimeFormat('en-u-ca-islamic-uma-nu-latn', {
+      day: 'numeric',
+      month: 'numeric',
+      year: 'numeric'
+    });
+    const numericParts = numericFormatter.formatToParts(today);
+    const day = parseInt(numericParts.find(p => p.type === 'day')?.value || '1');
+    const monthIndex = parseInt(numericParts.find(p => p.type === 'month')?.value || '1');
+    const year = parseInt(numericParts.find(p => p.type === 'year')?.value || '1447');
+
+    // Get Hijriah month name in Indonesian
+    const nameFormatter = new Intl.DateTimeFormat('id-u-ca-islamic-uma-nu-latn', {
+      month: 'long'
+    });
+    const monthName = nameFormatter.format(today);
+
+    return { day, monthName, monthIndex, year };
+  }, []);
+
+  const hijriGreeting = useMemo(() => {
+    const { day, monthIndex, year, monthName } = hijriDate;
+    
+    if (monthIndex === 9) { // Ramadan
+      return {
+        title: `Ramadan Kareem ${year}H`,
+        subtitle: "Selamat Menunaikan Ibadah Puasa"
+      };
+    } else if (monthIndex === 10 && day >= 1 && day <= 3) { // Syawal 1-3
+      return {
+        title: `Selamat Hari Raya Idul Fitri ${year}H`,
+        subtitle: "Taqabbalallahu Minna Wa Minkum"
+      };
+    } else if (monthIndex === 12 && day >= 10 && day <= 13) { // Dzulhijjah 10-13
+      return {
+        title: "Selamat Hari Raya Idul Adha",
+        subtitle: `10-13 ${monthName} ${year}H`
+      };
+    } else {
+      return {
+        title: `Selamat Menjalani Aktivitas`,
+        subtitle: `Bulan ${monthName} ${year}H`
+      };
+    }
+  }, [hijriDate]);
+
+  const scheduleTitle = useMemo(() => {
+    return hijriDate.monthIndex === 9 ? "Jadwal Imsakiyah" : "Jadwal Shalat Harian";
+  }, [hijriDate]);
+
   // Hadith State
   const [hadithSearch, setHadithSearch] = useState('');
   const [randomHadith, setRandomHadith] = useState(HADITHS[0]);
@@ -813,7 +867,7 @@ export default function App() {
             <Clock size={24} className="text-gold" />
             <div className="flex flex-col">
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gold/80 leading-none">Waktu</span>
-              <span className="text-sm font-black uppercase tracking-widest text-gold leading-none mt-1">Imsakiyah</span>
+              <span className="text-sm font-black uppercase tracking-widest text-gold leading-none mt-1">{scheduleTitle}</span>
             </div>
           </div>
           
@@ -905,11 +959,11 @@ export default function App() {
                 LisanulHaq
               </h2>
               <h1 className="text-5xl md:text-7xl font-black tracking-tighter">
-                Ramadan <span className="text-gold">Kareem</span> 2026
+                {hijriGreeting.title}
               </h1>
             </div>
             <p className="text-gold-light font-bold tracking-[0.4em] uppercase text-sm md:text-base">
-              Selamat Menunaikan Ibadah Puasa 1447H
+              {hijriGreeting.subtitle}
             </p>
           </div>
         </motion.div>
@@ -1754,7 +1808,7 @@ export default function App() {
                   <div className="p-3 bg-gold/10 rounded-2xl text-gold">
                     <Calendar size={24} />
                   </div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">Jadwal Imsakiyah</h2>
+                  <h2 className="text-2xl font-black text-white tracking-tight">{scheduleTitle}</h2>
                 </div>
                 <button onClick={() => setShowImsakiyahDetails(false)} className="p-2 text-gold/40 hover:text-gold transition-colors">
                   <X size={24} />
@@ -1764,8 +1818,8 @@ export default function App() {
               <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
                 <div className="bg-gold/5 border border-gold/20 p-6 rounded-3xl text-center space-y-2">
                   <p className="text-gold font-black uppercase tracking-widest text-[10px]">Hari Ini</p>
-                  <h3 className="text-xl font-bold text-white">13 Maret 2026</h3>
-                  <p className="text-gold-light text-xs">1 Ramadan 1447 H</p>
+                  <h3 className="text-xl font-bold text-white">{new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</h3>
+                  <p className="text-gold-light text-xs">{hijriDate.day} {hijriDate.monthName} {hijriDate.year} H</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3">
