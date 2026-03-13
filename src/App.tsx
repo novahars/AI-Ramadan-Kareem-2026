@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { createClient } from '@supabase/supabase-js';
@@ -218,6 +218,8 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [isDataFetched, setIsDataFetched] = useState(false);
   const [isFetchingData, setIsFetchingData] = useState(false);
+  // Ref to track if we are currently loading data from cloud to prevent writing it back immediately
+  const isInitialLoadRef = useRef(true);
 
   // AI State
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -272,17 +274,21 @@ export default function App() {
       setUser(session?.user ?? null);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const newUser = session?.user ?? null;
       setUser(newUser);
       
-      if (event === 'SIGNED_IN') {
+      if (event === 'SIGNED_IN' && newUser) {
+        // When signing in, we want to ensure local data is pushed BEFORE we start the regular fetch cycle
         const localJuz = localStorage.getItem('ramadan_juz');
         const localTarawih = localStorage.getItem('ramadan_tarawih');
+        
         if (localJuz || localTarawih) {
-          // Auto sync on login
-          syncDataToCloud(newUser);
+          await syncDataToCloud(newUser);
         }
+        
+        // Reset fetch state to trigger a fresh fetch from cloud (which now has synced data)
+        setIsDataFetched(false);
       }
     });
 
@@ -323,30 +329,22 @@ export default function App() {
 
   const syncDataToCloud = async (activeUserOverride?: any) => {
     const activeUser = activeUserOverride || user || (supabase ? (await supabase.auth.getUser()).data.user : null);
-    if (!activeUser || !supabase) {
-      console.warn("Cannot sync: No user or Supabase client");
-      return;
-    }
+    if (!activeUser || !supabase) return;
     
-    const localJuz = Number(localStorage.getItem('ramadan_juz') || 0);
-    const localTarawih = Number(localStorage.getItem('ramadan_tarawih') || 0);
+    // Read directly from state or localstorage to get most recent values
+    const juzToSync = activeUserOverride ? Number(localStorage.getItem('ramadan_juz') || 0) : currentJuz;
+    const tarawihToSync = activeUserOverride ? Number(localStorage.getItem('ramadan_tarawih') || 0) : tarawihNights;
 
     try {
-      const { error } = await supabase
+      await supabase
         .from('user_data')
         .upsert({
           id: activeUser.id,
-          juz: localJuz,
-          tarawih: localTarawih,
+          juz: juzToSync,
+          tarawih: tarawihToSync,
+          mood: selectedMood?.label,
           updated_at: new Date().toISOString()
         });
-
-      if (!error) {
-        setCurrentJuz(localJuz);
-        setTarawihNights(localTarawih);
-      } else {
-        console.error("Sync error from Supabase:", error);
-      }
     } catch (e) {
       console.error("Sync catch error:", e);
     }
@@ -358,6 +356,8 @@ export default function App() {
       if (!user?.id || !supabase || isDataFetched || isFetchingData) return;
       
       setIsFetchingData(true);
+      isInitialLoadRef.current = true; // Mark as initial load to block auto-sync
+      
       try {
         const { data, error } = await supabase
           .from('user_data')
@@ -366,6 +366,7 @@ export default function App() {
           .single();
 
         if (data && !error) {
+          // Update local state from cloud
           setCurrentJuz(data.juz);
           setTarawihNights(data.tarawih);
           if (data.mood) {
@@ -378,32 +379,28 @@ export default function App() {
         console.error("Fetch error:", e);
       } finally {
         setIsFetchingData(false);
+        // Allow sync after a delay to let state settle
+        setTimeout(() => {
+          isInitialLoadRef.current = false;
+        }, 1000);
       }
     };
     fetchCloudData();
   }, [user?.id, isDataFetched, isFetchingData]);
 
-  // Fetch Gold Price
-  // Persist Ibadah
+  // Persist Ibadah to LocalStorage and Cloud
   useEffect(() => {
     localStorage.setItem('ramadan_juz', currentJuz.toString());
-    if (user?.id && supabase) {
-      supabase.from('user_data').upsert({ id: user.id, juz: currentJuz, updated_at: new Date().toISOString() });
-    }
-  }, [currentJuz, user?.id]);
-
-  useEffect(() => {
     localStorage.setItem('ramadan_tarawih', tarawihNights.toString());
-    if (user?.id && supabase) {
-      supabase.from('user_data').upsert({ id: user.id, tarawih: tarawihNights, updated_at: new Date().toISOString() });
+    
+    // Only sync to cloud if logged in AND not currently performing initial load/fetch
+    if (user?.id && supabase && !isInitialLoadRef.current && !isFetchingData) {
+      const timer = setTimeout(() => {
+        syncDataToCloud();
+      }, 1000); // Debounce sync to avoid spamming Supabase
+      return () => clearTimeout(timer);
     }
-  }, [tarawihNights, user?.id]);
-
-  useEffect(() => {
-    if (user?.id && selectedMood && supabase) {
-      supabase.from('user_data').upsert({ id: user.id, mood: selectedMood.label, updated_at: new Date().toISOString() });
-    }
-  }, [selectedMood, user?.id]);
+  }, [currentJuz, tarawihNights, selectedMood, user?.id, isFetchingData]);
 
   useEffect(() => {
     const randomIdx = Math.floor(Math.random() * HADITHS.length);
