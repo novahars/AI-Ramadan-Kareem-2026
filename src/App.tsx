@@ -881,7 +881,7 @@ const nisabValue = useMemo(() => {
               <div className=" grid grid-cols-1 gap-6">
                 <div className="bg-white/5 rounded-3xl p-5 border border-white/10 shadow-inner">
                   <p className="text-xs uppercase font-black text-gold-light mb-2 tracking-wider">Zakat Maal</p>
-                  <p className="text-xl font-mono font-bold text-gold">Rp {zakatMaal.toLocaleString('id-ID')}</p>
+                  <p className="text-xl font-mono font-bold text-gold break-all ">Rp {zakatMaal.toLocaleString('id-ID')}</p>
                 </div>
               </div>
 
