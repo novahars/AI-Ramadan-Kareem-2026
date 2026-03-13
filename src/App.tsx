@@ -383,23 +383,23 @@ export default function App() {
   // Persist Ibadah
   useEffect(() => {
     localStorage.setItem('ramadan_juz', currentJuz.toString());
-    if (user && supabase) {
+    if (user?.id && supabase) {
       supabase.from('user_data').upsert({ id: user.id, juz: currentJuz, updated_at: new Date().toISOString() });
     }
-  }, [currentJuz, user]);
+  }, [currentJuz, user?.id]);
 
   useEffect(() => {
     localStorage.setItem('ramadan_tarawih', tarawihNights.toString());
-    if (user && supabase) {
+    if (user?.id && supabase) {
       supabase.from('user_data').upsert({ id: user.id, tarawih: tarawihNights, updated_at: new Date().toISOString() });
     }
-  }, [tarawihNights, user]);
+  }, [tarawihNights, user?.id]);
 
   useEffect(() => {
-    if (user && selectedMood && supabase) {
+    if (user?.id && selectedMood && supabase) {
       supabase.from('user_data').upsert({ id: user.id, mood: selectedMood.label, updated_at: new Date().toISOString() });
     }
-  }, [selectedMood, user]);
+  }, [selectedMood, user?.id]);
 
   useEffect(() => {
     const randomIdx = Math.floor(Math.random() * HADITHS.length);
