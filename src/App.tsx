@@ -29,7 +29,14 @@ import {
   User,
   Play,
   Pause,
-  Volume2
+  Volume2,
+  Loader2,
+  Clock,
+  Fingerprint,
+  Share2,
+  ChevronRight,
+  X,
+  Calendar
 } from 'lucide-react';
 
 // --- Supabase Initialization ---
@@ -170,6 +177,22 @@ const MUROTTAL_LINKS: Record<number, string> = {
   30: "https://j.mp/2bFREcc"
 };
 
+const DOA_RAMADAN = [
+  { title: "Doa Buka Puasa", arabic: "ذَهَبَ الظَّمَأُ وَابْتَلَّتِ الْعُرُوقُ وَثَبَتَ الأَجْرُ إِنْ شَاءَ اللَّهُ", translation: "Telah hilang rasa haus, telah basah urat-urat, dan telah tetap pahala, insya Allah." },
+  { title: "Niat Puasa Ramadan", arabic: "نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هَذِهِ السَّنَةِ لِلَّهِ تَعَالَى", translation: "Aku niat berpuasa esok hari untuk menunaikan kewajiban bulan Ramadan tahun ini karena Allah Ta'ala." },
+  { title: "Doa Lailatul Qadar", arabic: "اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي", translation: "Ya Allah, sesungguhnya Engkau Maha Pengampun dan menyukai ampunan, maka ampunilah aku." },
+  { title: "Doa Berbuka (Versi Lain)", arabic: "اَللّهُمَّ لَكَ صُمْتُ وَبِكَ آمَنْتُ وَعَلَى رِزْقِكَ أَفْطَرْتُ", translation: "Ya Allah, untuk-Mu aku berpuasa, kepada-Mu aku beriman, dan dengan rezeki-Mu aku berbuka." },
+];
+
+const PRAYER_TIMES = {
+  imsak: "04:32",
+  subuh: "04:42",
+  dzuhur: "12:05",
+  ashar: "15:15",
+  maghrib: "18:08",
+  isya: "19:17"
+};
+
 const DEFAULT_NISAB_GOLD = 258825000; // Fallback nisab
 
 // --- AI Service ---
@@ -255,9 +278,10 @@ export default function App() {
 
   // Murottal State
   const [isPlayingMurottal, setIsPlayingMurottal] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [murottalError, setMurottalError] = useState<string | null>(null);
   const murottalRef = useRef<HTMLAudioElement | null>(null);
-  const [murottalLink, setMurottalLink] = useState(''); 
+  const [murottalLink, setMurottalLink] = useState('');
 
   // Favorites State
   const [favorites, setFavorites] = useState<any[]>([]);
@@ -295,6 +319,12 @@ export default function App() {
     return saved ? Number(saved) : 0;
   });
 
+  // New Features State
+  const [showTasbih, setShowTasbih] = useState(false);
+  const [tasbihCount, setTasbihCount] = useState(0);
+  const [showDoa, setShowDoa] = useState(false);
+  const [showImsakiyahDetails, setShowImsakiyahDetails] = useState(false);
+
   // Hadith State
   const [hadithSearch, setHadithSearch] = useState('');
   const [randomHadith, setRandomHadith] = useState(HADITHS[0]);
@@ -319,7 +349,7 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const newUser = session?.user ?? null;
       setUser(newUser);
-      
+
       if (event === 'SIGNED_IN' && newUser) {
         // Reset fetch state to trigger a fresh fetch from cloud.
         // The fetchCloudData effect will handle the "Cloud Wins" logic.
@@ -357,7 +387,7 @@ export default function App() {
     setCurrentJuz(0);
     setTarawihNights(0);
     setSelectedMood(null);
-    
+
     setUser(null);
     setIsDataFetched(false);
   };
@@ -365,7 +395,7 @@ export default function App() {
   const syncDataToCloud = async (activeUserOverride?: any) => {
     const activeUser = activeUserOverride || user || (supabase ? (await supabase.auth.getUser()).data.user : null);
     if (!activeUser || !supabase) return;
-    
+
     // Read directly from state or localstorage to get most recent values
     const juzToSync = activeUserOverride ? Number(localStorage.getItem('ramadan_juz') || 0) : currentJuz;
     const tarawihToSync = activeUserOverride ? Number(localStorage.getItem('ramadan_tarawih') || 0) : tarawihNights;
@@ -389,10 +419,10 @@ export default function App() {
   useEffect(() => {
     const fetchCloudData = async () => {
       if (!user?.id || !supabase || isDataFetched || isFetchingData) return;
-      
+
       setIsFetchingData(true);
       isInitialLoadRef.current = true; // Mark as initial load to block auto-sync
-      
+
       try {
         const { data, error } = await supabase
           .from('user_data')
@@ -431,7 +461,7 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('ramadan_juz', currentJuz.toString());
     localStorage.setItem('ramadan_tarawih', tarawihNights.toString());
-    
+
     // Only sync to cloud if logged in AND not currently performing initial load/fetch
     if (user?.id && supabase && !isInitialLoadRef.current && !isFetchingData) {
       const timer = setTimeout(() => {
@@ -473,10 +503,10 @@ export default function App() {
         }
 
         // Secondary API or Fallback
-        setGoldPrice(3171000); 
+        setGoldPrice(3171000);
       } catch (e) {
         // Silent fallback to avoid console noise if it's a common network issue
-        setGoldPrice(3171000); 
+        setGoldPrice(3171000);
       } finally {
         setIsGoldLoading(false);
       }
@@ -560,11 +590,11 @@ export default function App() {
   const speakSequence = (arabic: string, translation: string, source: string, onFinish?: () => void) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      
+
       const arabicUtterance = new SpeechSynthesisUtterance(arabic);
       arabicUtterance.lang = 'ar-SA';
-      arabicUtterance.rate = 0.5; // Normal speed for Arabic
-      
+      arabicUtterance.rate = 0.64; // Normal speed for Arabic
+
       const translationUtterance = new SpeechSynthesisUtterance(`${translation}. Hadits Riwayat ${source}`);
       translationUtterance.lang = 'id-ID';
       translationUtterance.rate = 1.05; // Keep Indonesian speed
@@ -675,25 +705,60 @@ export default function App() {
     setIsPlayingMurottal(!isPlayingMurottal);
   };
 
-  const playJuz = (juz: number) => {
+  const playJuz = async (juz: number) => {
     const link = MUROTTAL_LINKS[juz];
-    if (link) {
+    if (!link || !murottalRef.current) return;
+
+    // Jika klik juz yang sama, cukup toggle play/pause tanpa reload (agar tidak kembali ke awal)
+    if (murottalLink === link) {
+      if (isPlayingMurottal) {
+        murottalRef.current.pause();
+        setIsPlayingMurottal(false);
+      } else {
+        try {
+          await murottalRef.current.play();
+          setIsPlayingMurottal(true);
+        } catch (err) {
+          console.error("Resume failed:", err);
+          // Jika gagal resume, coba load ulang
+          await startNewPlayback(link);
+        }
+      }
+      return;
+    }
+
+    // Jika juz berbeda, mulai playback baru
+    await startNewPlayback(link);
+  };
+
+  const startNewPlayback = async (link: string) => {
+    if (!murottalRef.current) return;
+    try {
+      setIsBuffering(true);
       setMurottalLink(link);
+
+      // 1. Set source secara manual ke element
+      murottalRef.current.src = link;
+
+      // 2. Load audio secara eksplisit
+      murottalRef.current.load();
+
+      // 3. Tunggu sebentar agar browser memproses load sebelum play
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await murottalRef.current.play();
       setIsPlayingMurottal(true);
       setMurottalError(null);
-      if (murottalRef.current) {
-        murottalRef.current.src = link;
-        murottalRef.current.load(); // Force reload
-        murottalRef.current.play().catch(err => {
-          console.error("Playback failed:", err);
-          setMurottalError("Gagal memutar audio. Link mungkin tidak didukung atau terblokir.");
-          setIsPlayingMurottal(false);
-        });
+    } catch (err: any) {
+      console.error("Playback failed:", err);
+      if (err.name !== 'AbortError') {
+        setMurottalError("Gagal memutar audio.");
       }
+      setIsPlayingMurottal(false);
     }
   };
 
-const nisabValue = useMemo(() => {
+  const nisabValue = useMemo(() => {
     return goldPrice > 0 ? goldPrice * 85 : DEFAULT_NISAB_GOLD;
   }, [goldPrice]);
 
@@ -740,78 +805,100 @@ const nisabValue = useMemo(() => {
 
   return (
     <div className="min-h-screen bg-islamic-green-dark text-[#F5F5F5] font-sans selection:bg-gold/30 scroll-smooth">
-      
-      {/* Auth Button */}
-      <div className="fixed top-6 right-6 z-50 flex items-center gap-3">
-        {user && (
-          <button
-            onClick={() => setShowFavorites(!showFavorites)}
-            className="p-3 bg-white/5 backdrop-blur-md border border-gold/20 rounded-full text-gold hover:bg-gold/10 transition-all shadow-xl"
-            title="Favorit Saya"
-          >
-            <Heart size={20} fill={showFavorites ? "currentColor" : "none"} />
-          </button>
-        )}
-        {user ? (
-          <div className="flex items-center gap-3 bg-white/5 backdrop-blur-md border border-gold/20 p-2 pl-4 rounded-full shadow-xl">
-            <div className="text-right hidden sm:block">
-              <p className="text-[10px] uppercase font-black text-gold tracking-widest">Connected</p>
-              <p className="text-xs font-bold text-white truncate max-w-[120px]">{user.user_metadata?.full_name || user.email}</p>
+
+      {/* Imsakiyah Bar (Now includes Auth) */}
+      <div className="sticky top-0 z-[100] w-full bg-islamic-green-dark/95 backdrop-blur-2xl border-b border-gold/20 shadow-2xl">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between overflow-x-auto no-scrollbar gap-8">
+          <div className="flex items-center gap-3 whitespace-nowrap">
+            <Clock size={24} className="text-gold" />
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gold/80 leading-none">Waktu</span>
+              <span className="text-sm font-black uppercase tracking-widest text-gold leading-none mt-1">Imsakiyah</span>
             </div>
-            <div className="w-10 h-10 rounded-full border-2 border-gold overflow-hidden bg-gold/20 flex items-center justify-center">
-              {user.user_metadata?.avatar_url ? (
-                <img src={user.user_metadata.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+          </div>
+          
+          <div className="flex items-center gap-10">
+            {Object.entries(PRAYER_TIMES).map(([name, time]) => (
+              <div key={name} className="flex flex-col items-center min-w-[60px]">
+                <span className="text-[10px] uppercase font-black text-islamic-green-dark bg-gold px-3 py-1 rounded-full tracking-widest leading-none mb-2 shadow-lg shadow-gold/20">{name}</span>
+                <span className="text-xl font-black text-white leading-none tracking-tighter">{time}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-4 flex-shrink-0">
+            {/* Auth Section Inside Nav */}
+            <div className="flex items-center gap-3">
+              {user && (
+                <button
+                  onClick={() => setShowFavorites(!showFavorites)}
+                  className="p-2.5 bg-white/5 border border-gold/20 rounded-full text-gold hover:bg-gold/10 transition-all"
+                  title="Favorit Saya"
+                >
+                  <Heart size={18} fill={showFavorites ? "currentColor" : "none"} />
+                </button>
+              )}
+              {user ? (
+                <div className="flex items-center gap-2 bg-white/5 border border-gold/20 p-1.5 pl-3 rounded-full">
+                  <div className="text-right hidden lg:block">
+                    <p className="text-[9px] uppercase font-black text-gold tracking-widest leading-none">Connected</p>
+                    <p className="text-[11px] font-bold text-white truncate max-w-[80px] leading-none mt-1">{user.user_metadata?.full_name || user.email}</p>
+                  </div>
+                  <div className="w-8 h-8 rounded-full border border-gold overflow-hidden bg-gold/20 flex items-center justify-center">
+                    {user.user_metadata?.avatar_url ? (
+                      <img src={user.user_metadata.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <User size={16} className="text-gold" />
+                    )}
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      logout();
+                    }}
+                    className="p-2 hover:bg-red-500/20 text-white hover:text-red-400 rounded-full transition-all"
+                    title="Logout"
+                  >
+                    <LogOut size={16} />
+                  </button>
+                </div>
               ) : (
-                <User size={20} className="text-gold" />
+                <button
+                  onClick={loginWithGoogle}
+                  className="flex items-center gap-2 bg-gold text-islamic-green-dark px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-gold-light transition-all shadow-lg"
+                >
+                  <LogIn size={14} />
+                  Login
+                </button>
               )}
             </div>
+
             <button 
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                logout();
-              }}
-              className="p-2.5 hover:bg-red-500/20 text-white hover:text-red-400 rounded-full transition-all cursor-pointer relative z-[60]"
-              title="Logout"
+              onClick={() => setShowImsakiyahDetails(true)}
+              className="p-2.5 bg-white/5 hover:bg-gold/10 rounded-2xl text-gold transition-all border border-gold/20"
             >
-              <LogOut size={18} />
+              <ChevronRight size={20} />
             </button>
           </div>
-        ) : (
-          <button 
-            onClick={loginWithGoogle}
-            className="flex items-center gap-3 bg-white/5 backdrop-blur-md border border-gold/20 px-6 py-3 rounded-full text-sm font-black text-white hover:bg-gold/10 hover:border-gold/50 transition-all shadow-xl group"
-          >
-            <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center p-1">
-              <svg viewBox="0 0 24 24" className="w-full h-full"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-            </div>
-            Masuk dengan Google
-          </button>
-        )}
+        </div>
       </div>
 
-      {/* 1. Hero Section: Hadith */}
-      <section className="relative min-h-[65vh] flex flex-col items-center justify-center px-4 py-16 border-b border-gold/10 overflow-hidden">
-        {/* Background Decorative Elements */}
-        <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-          <div className="absolute top-10 left-10 w-64 h-64 border border-gold rounded-full animate-pulse" />
-          <div className="absolute bottom-10 right-10 w-96 h-96 border border-gold rounded-full animate-pulse delay-700" />
-        </div>
-
+      {/* 1. Hero Section: Branding (Separate Section) */}
+      <section className="relative pt-24 pb-12 flex flex-col items-center justify-center px-4 overflow-hidden bg-gradient-to-b from-islamic-green-dark to-islamic-green-dark/50">
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
-          className="max-w-4xl w-full text-center space-y-12 relative z-10"
+          className="max-w-4xl w-full text-center space-y-6 relative z-10"
         >
-          {/* Header Branding */}
           <div className="space-y-4">
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
               className="inline-block"
             >
-              <Moon className="text-gold w-16 h-16 gold-glow" />
+              <Moon className="text-gold w-12 h-12 gold-glow" />
             </motion.div>
             <div className="space-y-1">
               <h2 className="text-3xl md:text-4xl font-serif text-[#FFD700] tracking-tight italic">
@@ -825,6 +912,62 @@ const nisabValue = useMemo(() => {
               Selamat Menunaikan Ibadah Puasa 1447H
             </p>
           </div>
+        </motion.div>
+      </section>
+
+      {/* 2. Main Content Section: Quick Menu & Search */}
+      <section className="relative pt-12 pb-20 flex flex-col items-center justify-center px-4 overflow-hidden">
+        {/* Background Decorative Elements */}
+        <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+          <div className="absolute top-10 left-10 w-64 h-64 border border-gold rounded-full animate-pulse" />
+          <div className="absolute bottom-10 right-10 w-96 h-96 border border-gold rounded-full animate-pulse delay-700" />
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+          className="max-w-4xl w-full text-center space-y-12 relative z-10"
+        >
+          {/* Quick Menu Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto w-full">
+            <button 
+              onClick={() => document.getElementById('juz-tracker')?.scrollIntoView({ behavior: 'smooth' })}
+              className="glass-card p-5 rounded-[2rem] border border-gold/20 flex flex-col items-center gap-3 hover:bg-gold/10 transition-all group shadow-xl"
+            >
+              <div className="p-3 bg-gold/10 rounded-2xl text-gold group-hover:scale-110 transition-transform">
+                <BookOpen size={20} />
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">Juz Tracker</span>
+            </button>
+            <button 
+              onClick={() => document.getElementById('tarawih-tracker')?.scrollIntoView({ behavior: 'smooth' })}
+              className="glass-card p-5 rounded-[2rem] border border-gold/20 flex flex-col items-center gap-3 hover:bg-gold/10 transition-all group shadow-xl"
+            >
+              <div className="p-3 bg-gold/10 rounded-2xl text-gold group-hover:scale-110 transition-transform">
+                <Moon size={20} />
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">Tarawih</span>
+            </button>
+            <button 
+              onClick={() => setShowDoa(true)}
+              className="glass-card p-5 rounded-[2rem] border border-gold/20 flex flex-col items-center gap-3 hover:bg-gold/10 transition-all group shadow-xl"
+            >
+              <div className="p-3 bg-gold/10 rounded-2xl text-gold group-hover:scale-110 transition-transform">
+                <Sparkles size={20} />
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">Kumpulan Doa</span>
+            </button>
+            <button 
+              onClick={() => setShowTasbih(true)}
+              className="glass-card p-5 rounded-[2rem] border border-gold/20 flex flex-col items-center gap-3 hover:bg-gold/10 transition-all group shadow-xl"
+            >
+              <div className="p-3 bg-gold/10 rounded-2xl text-gold group-hover:scale-110 transition-transform">
+                <Fingerprint size={20} />
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">Tasbih Digital</span>
+            </button>
+          </div>
 
           {/* Hadith Search */}
           <div className="max-w-md mx-auto relative group">
@@ -837,7 +980,7 @@ const nisabValue = useMemo(() => {
               placeholder="Cari topik hadits (misal: puasa, sedekah)..."
               className="w-full bg-white/5 border border-gold/20 rounded-full py-4 pl-12 pr-20 text-[#F5F5F5] placeholder:text-white/20 focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/20 transition-all shadow-xl"
             />
-            <button 
+            <button
               onClick={searchHadithAI}
               disabled={isHadithLoading}
               className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-gold text-islamic-green-dark rounded-full hover:bg-gold-light transition-all disabled:opacity-50"
@@ -892,6 +1035,16 @@ const nisabValue = useMemo(() => {
                       <Heart size={20} fill={isFavorited('hadith', aiHadith || randomHadith) ? "currentColor" : "none"} />
                     </button>
                   )}
+                  <button
+                    onClick={() => {
+                      const h = aiHadith || randomHadith;
+                      copyToClipboard(`${h.arabic}\n\n${h.translation}\n\nSumber: ${h.source}`, () => {});
+                    }}
+                    className="p-2 bg-gold/10 text-gold rounded-full hover:bg-gold/20 transition-all"
+                    title="Bagikan Kebaikan"
+                  >
+                    <Share2 size={20} />
+                  </button>
                 </div>
                 <p className="text-4xl md:text-5xl font-serif text-gold leading-loose dir-rtl text-center">
                   {aiHadith ? aiHadith.arabic : randomHadith.arabic}
@@ -1089,6 +1242,7 @@ const nisabValue = useMemo(() => {
 
           {/* 3. Ibadah Tracker */}
           <Card title="Ibadah Tracker" icon={BookOpen} delay={0.3}>
+            <div id="juz-tracker" className="absolute -top-24" />
             <p className="text-[#F5F5F5]/80 text-base mb-8">Catat kemajuan tilawah dan tarawihmu. Targetkan khatam di bulan suci.</p>
             <div className="space-y-10 flex-1 flex flex-col justify-center">
               {/* Quran Tracker */}
@@ -1140,16 +1294,26 @@ const nisabValue = useMemo(() => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       onClick={() => playJuz(currentJuz)}
-                      className="flex items-center justify-center gap-2 w-full py-3 bg-gold text-islamic-green-dark rounded-xl text-xs font-black hover:bg-gold-light transition-all uppercase tracking-widest shadow-lg"
+                      disabled={isBuffering}
+                      className="flex items-center justify-center gap-2 w-full py-3 bg-gold text-islamic-green-dark rounded-xl text-xs font-black hover:bg-gold-light transition-all uppercase tracking-widest shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                      <Headphones size={14} />
-                      Putar Murottal Juz {currentJuz}
+                      {isBuffering ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (murottalLink === MUROTTAL_LINKS[currentJuz] && isPlayingMurottal) ? (
+                        <Pause size={14} />
+                      ) : (
+                        <Headphones size={14} />
+                      )}
+                      {isBuffering ? 'Memuat...' : 
+                       (murottalLink === MUROTTAL_LINKS[currentJuz] && isPlayingMurottal) ? `Jeda Murottal Juz ${currentJuz}` :
+                       (murottalLink === MUROTTAL_LINKS[currentJuz] && !isPlayingMurottal) ? `Lanjutkan Juz ${currentJuz}` :
+                       `Putar Murottal Juz ${currentJuz}`}
                     </motion.button>
 
                     {/* Integrated Murottal Player */}
                     <AnimatePresence>
                       {(murottalLink || murottalError) && (
-                        <motion.div 
+                        <motion.div
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
                           className={`bg-white/5 border ${murottalError ? 'border-red-500/50' : 'border-gold/20'} p-4 rounded-2xl flex flex-col gap-3`}
@@ -1185,7 +1349,7 @@ const nisabValue = useMemo(() => {
               </div>
 
               {/* Tarawih Tracker */}
-              <div className="space-y-6">
+              <div id="tarawih-tracker" className="space-y-6">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <Moon size={18} className="text-[#FFD700]" />
@@ -1375,7 +1539,7 @@ const nisabValue = useMemo(() => {
                           <p className="text-sm text-white/80 line-clamp-3">{fav.content.instructions}</p>
                         </div>
                       )}
-                      
+
                       <button
                         onClick={() => {
                           if (fav.type === 'hadith') {
@@ -1400,16 +1564,14 @@ const nisabValue = useMemo(() => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <audio 
-        ref={murottalRef} 
-        src={murottalLink} 
+      
+      <audio
+        ref={murottalRef}
+        // Gunakan null jika murottalLink kosong, jangan string ""
+        src={murottalLink || null}
         onEnded={() => setIsPlayingMurottal(false)}
-        onError={(e) => {
-          console.error("Audio error:", e);
-          setMurottalError("Gagal memuat audio. Link mungkin tidak didukung atau terblokir oleh browser.");
-          setIsPlayingMurottal(false);
-        }}
+        onCanPlay={() => setIsBuffering(false)} // Matikan loading saat siap putar
+        hidden
       />
 
       {/* Login Prompt Popup */}
@@ -1447,6 +1609,182 @@ const nisabValue = useMemo(() => {
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Tasbih Overlay */}
+      <AnimatePresence>
+        {showTasbih && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-islamic-green-dark flex flex-col items-center justify-center p-6"
+          >
+            <button 
+              onClick={() => setShowTasbih(false)}
+              className="absolute top-8 right-8 p-4 text-gold hover:bg-gold/10 rounded-full transition-all"
+            >
+              <X size={32} />
+            </button>
+            
+            <div className="text-center space-y-12 w-full max-w-md">
+              <div className="space-y-2">
+                <h2 className="text-gold font-black uppercase tracking-[0.3em] text-sm">Tasbih Digital</h2>
+                <p className="text-white/40 text-xs italic">Ketuk di mana saja untuk menghitung</p>
+              </div>
+
+              <motion.div 
+                key={tasbihCount}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="text-[12rem] font-black text-gold leading-none tracking-tighter select-none"
+              >
+                {tasbihCount}
+              </motion.div>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setTasbihCount(0)}
+                  className="flex-1 py-4 bg-white/5 border border-gold/20 text-gold rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-gold/10 transition-all"
+                >
+                  Reset
+                </button>
+                <button 
+                  onClick={() => {
+                    setTasbihCount(prev => prev + 1);
+                    if ('vibrate' in navigator) navigator.vibrate(50);
+                  }}
+                  className="flex-[2] py-4 bg-gold text-islamic-green-dark rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-gold-light transition-all shadow-2xl"
+                >
+                  Hitung
+                </button>
+              </div>
+            </div>
+
+            {/* Full screen invisible click area for easier counting */}
+            <div 
+              className="absolute inset-0 z-[-1]" 
+              onClick={() => {
+                setTasbihCount(prev => prev + 1);
+                if ('vibrate' in navigator) navigator.vibrate(50);
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Doa Drawer */}
+      <AnimatePresence>
+        {showDoa && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDoa(false)}
+              className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed bottom-0 left-0 right-0 z-[160] bg-islamic-green-dark border-t border-gold/30 rounded-t-[3rem] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
+            >
+              <div className="p-8 border-b border-gold/10 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-gold/10 rounded-2xl text-gold">
+                    <Sparkles size={24} />
+                  </div>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Doa Ramadan</h2>
+                </div>
+                <button onClick={() => setShowDoa(false)} className="p-2 text-gold/40 hover:text-gold transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 space-y-6 no-scrollbar">
+                {DOA_RAMADAN.map((doa, idx) => (
+                  <div key={idx} className="glass-card p-6 rounded-3xl border border-gold/10 space-y-4">
+                    <div className="flex justify-between items-start">
+                      <h3 className="text-gold font-black uppercase tracking-widest text-xs">{doa.title}</h3>
+                      <button 
+                        onClick={() => copyToClipboard(`${doa.title}\n\n${doa.arabic}\n\n${doa.translation}`, () => {})}
+                        className="p-2 text-gold/40 hover:text-gold transition-colors"
+                      >
+                        <Share2 size={16} />
+                      </button>
+                    </div>
+                    <p className="text-3xl font-serif text-white leading-loose dir-rtl text-right">{doa.arabic}</p>
+                    <p className="text-sm text-gold-light/80 italic leading-relaxed">{doa.translation}</p>
+                    <button 
+                      onClick={() => speakSequence(doa.arabic, doa.translation, 'Doa Ramadan')}
+                      className="flex items-center gap-2 text-[10px] font-black text-gold uppercase tracking-widest"
+                    >
+                      <Volume2 size={14} /> Dengarkan
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Imsakiyah Details Drawer */}
+      <AnimatePresence>
+        {showImsakiyahDetails && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowImsakiyahDetails(false)}
+              className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              className="fixed top-0 right-0 bottom-0 z-[160] w-full max-w-md bg-islamic-green-dark border-l border-gold/30 shadow-2xl flex flex-col"
+            >
+              <div className="p-8 border-b border-gold/10 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-gold/10 rounded-2xl text-gold">
+                    <Calendar size={24} />
+                  </div>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Jadwal Imsakiyah</h2>
+                </div>
+                <button onClick={() => setShowImsakiyahDetails(false)} className="p-2 text-gold/40 hover:text-gold transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
+                <div className="bg-gold/5 border border-gold/20 p-6 rounded-3xl text-center space-y-2">
+                  <p className="text-gold font-black uppercase tracking-widest text-[10px]">Hari Ini</p>
+                  <h3 className="text-xl font-bold text-white">13 Maret 2026</h3>
+                  <p className="text-gold-light text-xs">1 Ramadan 1447 H</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3">
+                  {Object.entries(PRAYER_TIMES).map(([name, time]) => (
+                    <div key={name} className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                      <span className="text-xs font-black uppercase tracking-widest text-gold/60">{name}</span>
+                      <span className="text-lg font-black text-white">{time}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-6 bg-white/5 rounded-3xl border border-white/5 space-y-4">
+                  <p className="text-[10px] text-white/40 italic text-center">
+                    *Jadwal berdasarkan koordinat lokasi Kakak saat ini. Pastikan GPS aktif untuk akurasi maksimal.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>
