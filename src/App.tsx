@@ -217,6 +217,8 @@ export default function App() {
   // Auth State
   const [user, setUser] = useState<any>(null);
   const [showSyncPrompt, setShowSyncPrompt] = useState(false);
+  const [isDataFetched, setIsDataFetched] = useState(false);
+  const [isFetchingData, setIsFetchingData] = useState(false);
 
   // AI State
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -266,25 +268,26 @@ export default function App() {
   useEffect(() => {
     if (!supabase) return;
 
+    // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const newUser = session?.user ?? null;
-      if (!user && newUser) {
-        // Just logged in
+      setUser(newUser);
+      
+      if (event === 'SIGNED_IN') {
         const localJuz = localStorage.getItem('ramadan_juz');
         const localTarawih = localStorage.getItem('ramadan_tarawih');
         if (localJuz || localTarawih) {
           setShowSyncPrompt(true);
         }
       }
-      setUser(newUser);
     });
 
     return () => subscription.unsubscribe();
-  }, [user]);
+  }, []);
 
   const loginWithGoogle = async () => {
     if (!supabase) {
@@ -308,6 +311,7 @@ export default function App() {
       }
     }
     setUser(null);
+    setIsDataFetched(false);
     setShowSyncPrompt(false);
   };
 
@@ -347,24 +351,33 @@ export default function App() {
   // Fetch Cloud Data
   useEffect(() => {
     const fetchCloudData = async () => {
-      if (!user || !supabase) return;
-      const { data, error } = await supabase
-        .from('user_data')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+      if (!user?.id || !supabase || isDataFetched || isFetchingData) return;
+      
+      setIsFetchingData(true);
+      try {
+        const { data, error } = await supabase
+          .from('user_data')
+          .select('*')
+          .eq('id', user.id)
+          .single();
 
-      if (data && !error) {
-        setCurrentJuz(data.juz);
-        setTarawihNights(data.tarawih);
-        if (data.mood) {
-          const moodObj = MOODS.find(m => m.label === data.mood);
-          if (moodObj) setSelectedMood(moodObj);
+        if (data && !error) {
+          setCurrentJuz(data.juz);
+          setTarawihNights(data.tarawih);
+          if (data.mood) {
+            const moodObj = MOODS.find(m => m.label === data.mood);
+            if (moodObj) setSelectedMood(moodObj);
+          }
+          setIsDataFetched(true);
         }
+      } catch (e) {
+        console.error("Fetch error:", e);
+      } finally {
+        setIsFetchingData(false);
       }
     };
     fetchCloudData();
-  }, [user]);
+  }, [user?.id, isDataFetched, isFetchingData]);
 
   // Fetch Gold Price
   // Persist Ibadah
@@ -573,8 +586,12 @@ const nisabValue = useMemo(() => {
               )}
             </div>
             <button 
-              onClick={logout}
-              className="p-2.5 hover:bg-red-500/20 text-white hover:text-red-400 rounded-full transition-all cursor-pointer z-50"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                logout();
+              }}
+              className="p-2.5 hover:bg-red-500/20 text-white hover:text-red-400 rounded-full transition-all cursor-pointer relative z-[60]"
               title="Logout"
             >
               <LogOut size={18} />
