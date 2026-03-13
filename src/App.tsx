@@ -216,7 +216,6 @@ const Card = ({ children, title, icon: Icon, delay = 0 }: { children: React.Reac
 export default function App() {
   // Auth State
   const [user, setUser] = useState<any>(null);
-  const [showSyncPrompt, setShowSyncPrompt] = useState(false);
   const [isDataFetched, setIsDataFetched] = useState(false);
   const [isFetchingData, setIsFetchingData] = useState(false);
 
@@ -281,7 +280,8 @@ export default function App() {
         const localJuz = localStorage.getItem('ramadan_juz');
         const localTarawih = localStorage.getItem('ramadan_tarawih');
         if (localJuz || localTarawih) {
-          setShowSyncPrompt(true);
+          // Auto sync on login
+          syncDataToCloud(newUser);
         }
       }
     });
@@ -310,13 +310,19 @@ export default function App() {
         console.error("Logout error:", err);
       }
     }
+    // Clear local data on logout for privacy/security
+    localStorage.removeItem('ramadan_juz');
+    localStorage.removeItem('ramadan_tarawih');
+    setCurrentJuz(0);
+    setTarawihNights(0);
+    setSelectedMood(null);
+    
     setUser(null);
     setIsDataFetched(false);
-    setShowSyncPrompt(false);
   };
 
-  const syncDataToCloud = async () => {
-    const activeUser = user || (supabase ? (await supabase.auth.getUser()).data.user : null);
+  const syncDataToCloud = async (activeUserOverride?: any) => {
+    const activeUser = activeUserOverride || user || (supabase ? (await supabase.auth.getUser()).data.user : null);
     if (!activeUser || !supabase) {
       console.warn("Cannot sync: No user or Supabase client");
       return;
@@ -336,12 +342,10 @@ export default function App() {
         });
 
       if (!error) {
-        setShowSyncPrompt(false);
         setCurrentJuz(localJuz);
         setTarawihNights(localTarawih);
       } else {
         console.error("Sync error from Supabase:", error);
-        alert("Gagal memindahkan data. Pastikan tabel 'user_data' sudah dibuat di Supabase.");
       }
     } catch (e) {
       console.error("Sync catch error:", e);
@@ -616,46 +620,6 @@ const nisabValue = useMemo(() => {
           </button>
         )}
       </div>
-
-      {/* Sync Prompt */}
-      <AnimatePresence>
-        {showSyncPrompt && (
-          <motion.div 
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-md bg-gold p-6 rounded-[2rem] shadow-2xl border-4 border-islamic-green-dark"
-          >
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-islamic-green-dark rounded-2xl text-gold">
-                <Sparkles size={24} />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-islamic-green-dark font-black text-lg leading-tight mb-1">Pindahkan Data?</h3>
-                <p className="text-islamic-green-dark/80 text-sm font-bold mb-4">Ingin memindahkan data lokal Anda ke akun Google agar bisa diakses di device lain?</p>
-                <div className="flex gap-3">
-                  <button 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      syncDataToCloud();
-                    }}
-                    className="flex-1 py-3 bg-islamic-green-dark text-gold rounded-xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-transform cursor-pointer relative z-[110] pointer-events-auto"
-                  >
-                    Ya, Pindahkan
-                  </button>
-                  <button 
-                    onClick={() => setShowSyncPrompt(false)}
-                    className="px-6 py-3 bg-islamic-green-dark/10 text-islamic-green-dark rounded-xl text-xs font-black uppercase tracking-widest hover:bg-islamic-green-dark/20 transition-all cursor-pointer relative z-[110] pointer-events-auto"
-                  >
-                    Nanti
-                  </button>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* 1. Hero Section: Hadith */}
       <section className="relative min-h-[65vh] flex flex-col items-center justify-center px-4 py-16 border-b border-gold/10 overflow-hidden">
