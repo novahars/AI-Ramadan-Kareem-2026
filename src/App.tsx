@@ -326,57 +326,38 @@ export default function App() {
   const [showImsakiyahDetails, setShowImsakiyahDetails] = useState(false);
 
   // --- Global Hijriah Sync ---
+  const masehiDate = useMemo(() => {
+    return new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  }, []);
+
   const hijriDate = useMemo(() => {
-    const today = new Date();
-    
-    // Get Hijriah parts (day, month index, year)
-    const numericFormatter = new Intl.DateTimeFormat('en-u-ca-islamic-uma-nu-latn', {
+    return new Intl.DateTimeFormat('id-TN-u-ca-islamic-uma-nu-latn', {
       day: 'numeric',
-      month: 'numeric',
+      month: 'long',
       year: 'numeric'
-    });
-    const numericParts = numericFormatter.formatToParts(today);
-    const day = parseInt(numericParts.find(p => p.type === 'day')?.value || '1');
-    const monthIndex = parseInt(numericParts.find(p => p.type === 'month')?.value || '1');
-    const year = parseInt(numericParts.find(p => p.type === 'year')?.value || '1447');
-
-    // Get Hijriah month name in Indonesian
-    const nameFormatter = new Intl.DateTimeFormat('id-u-ca-islamic-uma-nu-latn', {
-      month: 'long'
-    });
-    const monthName = nameFormatter.format(today);
-
-    return { day, monthName, monthIndex, year };
+    }).format(new Date());
   }, []);
 
   const hijriGreeting = useMemo(() => {
-    const { day, monthIndex, year, monthName } = hijriDate;
+    const currentHijriMonth = new Intl.DateTimeFormat('id-TN-u-ca-islamic-uma-nu-latn', { month: 'long' }).format(new Date());
+    const year = new Intl.DateTimeFormat('id-TN-u-ca-islamic-uma-nu-latn', { year: 'numeric' }).format(new Date());
     
-    if (monthIndex === 9) { // Ramadan
+    if (currentHijriMonth.includes('Ramadan')) {
       return {
-        title: `Ramadan Kareem ${year}H`,
+        title: "Ramadan Kareem 1447H",
         subtitle: "Selamat Menunaikan Ibadah Puasa"
-      };
-    } else if (monthIndex === 10 && day >= 1 && day <= 3) { // Syawal 1-3
-      return {
-        title: `Selamat Hari Raya Idul Fitri ${year}H`,
-        subtitle: "Taqabbalallahu Minna Wa Minkum"
-      };
-    } else if (monthIndex === 12 && day >= 10 && day <= 13) { // Dzulhijjah 10-13
-      return {
-        title: "Selamat Hari Raya Idul Adha",
-        subtitle: `10-13 ${monthName} ${year}H`
       };
     } else {
       return {
-        title: `Selamat Menjalani Aktivitas`,
-        subtitle: `Bulan ${monthName} ${year}H`
+        title: "Selamat Menjalani Aktivitas",
+        subtitle: `Bulan ${currentHijriMonth} ${year} H`
       };
     }
   }, [hijriDate]);
 
   const scheduleTitle = useMemo(() => {
-    return hijriDate.monthIndex === 9 ? "Jadwal Imsakiyah" : "Jadwal Shalat Harian";
+    const currentHijriMonth = new Intl.DateTimeFormat('id-TN-u-ca-islamic-uma-nu-latn', { month: 'long' }).format(new Date());
+    return currentHijriMonth.includes('Ramadan') ? "Jadwal Imsakiyah" : "Jadwal Shalat Harian";
   }, [hijriDate]);
 
   // Hadith State
@@ -1818,8 +1799,8 @@ export default function App() {
               <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
                 <div className="bg-gold/5 border border-gold/20 p-6 rounded-3xl text-center space-y-2">
                   <p className="text-gold font-black uppercase tracking-widest text-[10px]">Hari Ini</p>
-                  <h3 className="text-xl font-bold text-white">{new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</h3>
-                  <p className="text-gold-light text-xs">{hijriDate.day} {hijriDate.monthName} {hijriDate.year} H</p>
+                  <h3 className="text-xl font-bold text-white">{masehiDate}</h3>
+                  <p className="text-gold-light text-xs">{hijriDate}</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3">
