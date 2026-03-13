@@ -546,17 +546,21 @@ export default function App() {
     return favorites.some(f => f.type === type && JSON.stringify(f.content) === JSON.stringify(content));
   };
 
-  const speakSequence = (arabic: string, translation: string) => {
+  const speakSequence = (arabic: string, translation: string, onFinish?: () => void) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       
       const arabicUtterance = new SpeechSynthesisUtterance(arabic);
       arabicUtterance.lang = 'ar-SA';
-      arabicUtterance.rate = 1.05; 
+      arabicUtterance.rate = 1.0; // Normal speed for Arabic
       
       const translationUtterance = new SpeechSynthesisUtterance(translation);
       translationUtterance.lang = 'id-ID';
-      translationUtterance.rate = 1.05;
+      translationUtterance.rate = 1.05; // Keep Indonesian speed
+
+      if (onFinish) {
+        translationUtterance.onend = onFinish;
+      }
 
       window.speechSynthesis.speak(arabicUtterance);
       window.speechSynthesis.speak(translationUtterance);
@@ -624,8 +628,9 @@ export default function App() {
         reason: data.content["explanation"]
       };
       setMatchedRecipe(newRecipe);
-      speakSequence(newRecipe.name, newRecipe.instructions);
-      if (!user) setShowLoginPrompt(true);
+      speakSequence(newRecipe.name, newRecipe.instructions, () => {
+        if (!user) setShowLoginPrompt(true);
+      });
     }
   };
 
@@ -641,8 +646,9 @@ export default function App() {
         reason: data.content["explanation"]
       };
       setAiHadith(newHadith);
-      speakSequence(newHadith.arabic, newHadith.translation);
-      if (!user) setShowLoginPrompt(true);
+      speakSequence(newHadith.arabic, newHadith.translation, () => {
+        if (!user) setShowLoginPrompt(true);
+      });
     }
   };
 
