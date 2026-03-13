@@ -892,8 +892,7 @@ export default function App() {
           <div className="flex items-center gap-3 whitespace-nowrap">
             <Clock size={24} className="text-gold" />
             <div className="flex flex-col">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gold/80 leading-none">Waktu</span>
-              <span className="text-sm font-black uppercase tracking-widest text-gold leading-none mt-1">{scheduleTitle}</span>
+              <span className="text-sm font-black uppercase tracking-widest text-gold leading-none mt-1">{hijriDate}</span>
             </div>
           </div>
           
@@ -1834,7 +1833,7 @@ export default function App() {
                   <div className="p-3 bg-gold/10 rounded-2xl text-gold">
                     <Calendar size={24} />
                   </div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">{scheduleTitle}</h2>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Kalender Islamic</h2>
                 </div>
                 <button onClick={() => setShowImsakiyahDetails(false)} className="p-2 text-gold/40 hover:text-gold transition-colors">
                   <X size={24} />
@@ -1845,7 +1844,7 @@ export default function App() {
                 <div className="bg-gold/5 border border-gold/20 p-6 rounded-3xl text-center space-y-2">
                   <p className="text-gold font-black uppercase tracking-widest text-[10px]">Hari Ini</p>
                   <h3 className="text-xl font-bold text-white">{masehiDate}</h3>
-                  <p className="text-gold-light text-xs">{hijriDate}</p>
+                  <p className="text-gold-light text-xs">{scheduleTitle}</p>
                 </div>
                 <div className="grid grid-cols-1 gap-3">
                   {Object.entries(PRAYER_TIMES).map(([name, time]) => (
