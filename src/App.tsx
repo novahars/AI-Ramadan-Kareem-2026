@@ -325,27 +325,72 @@ export default function App() {
   const [showDoa, setShowDoa] = useState(false);
   const [showImsakiyahDetails, setShowImsakiyahDetails] = useState(false);
 
-  // --- Global Hijriah Sync ---
+ // --- Global Hijriah Sync ---
   const masehiDate = useMemo(() => {
     return new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
   }, []);
 
+  // Helper untuk deteksi Ramadan yang lebih akurat
+  const getRamadanDay = () => {
+    const ramadanStarts: { [key: number]: string } = {
+      2026: '2026-02-18',
+      2027: '2027-02-08',
+      2028: '2028-01-28',
+      2029: '2029-01-16',
+      2030: '2030-01-05',
+    };
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const startDateStr = ramadanStarts[currentYear];
+
+    if (!startDateStr) return null;
+
+    const startDate = new Date(startDateStr);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+
+    const diffTime = today.getTime() - start.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays >= 0 && diffDays <= 30) {
+      return diffDays + 1;
+    }
+    return null;
+  };
+
+  const checkIsRamadan = () => {
+    return getRamadanDay() !== null;
+  };
+
   const hijriDate = useMemo(() => {
-    return new Intl.DateTimeFormat('id-TN-u-ca-islamic-uma-nu-latn', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    }).format(new Date());
+    try {
+      return new Intl.DateTimeFormat('id-ID-u-ca-islamic-uma-nu-latn', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      }).format(new Date());
+    } catch (e) {
+      // Fallback jika Intl error
+      return "1 Ramadan 1447 H"; 
+    }
   }, []);
 
   const hijriGreeting = useMemo(() => {
-    const currentHijriMonth = new Intl.DateTimeFormat('id-TN-u-ca-islamic-uma-nu-latn', { month: 'long' }).format(new Date());
-    const year = new Intl.DateTimeFormat('id-TN-u-ca-islamic-uma-nu-latn', { year: 'numeric' }).format(new Date());
+    const isRamadan = checkIsRamadan();
     
-    if (currentHijriMonth.includes('Ramadan')) {
+    // Ambil tahun Hijriah saja (misal: 1447)
+    const year = new Intl.DateTimeFormat('id-ID-u-ca-islamic-uma-nu-latn', { year: 'numeric' }).format(new Date());
+    
+    // Ambil nama bulan Hijriah untuk kondisi selain Ramadan
+    const currentHijriMonth = new Intl.DateTimeFormat('id-ID-u-ca-islamic-uma-nu-latn', { month: 'long' }).format(new Date());
+
+    if (isRamadan) {
       return {
-        title: "Ramadan Kareem 1447H",
-        subtitle: "Selamat Menunaikan Ibadah Puasa"
+        // Title tetap Ramadan Kareem 2026 (Masehi) atau mau Hijriah juga boleh
+        title: `Ramadan Kareem 2026`, 
+        // Subtitle sekarang pakai tahun Hijriah + H
+        subtitle: `Selamat Menunaikan Ibadah Puasa ${year} H`
       };
     } else {
       return {
@@ -356,8 +401,8 @@ export default function App() {
   }, [hijriDate]);
 
   const scheduleTitle = useMemo(() => {
-    const currentHijriMonth = new Intl.DateTimeFormat('id-TN-u-ca-islamic-uma-nu-latn', { month: 'long' }).format(new Date());
-    return currentHijriMonth.includes('Ramadan') ? "Jadwal Imsakiyah" : "Jadwal Shalat Harian";
+    const ramadanDay = getRamadanDay();
+    return ramadanDay ? `Ramadan Hari ke-${ramadanDay}` : "Jadwal Shalat Harian";
   }, [hijriDate]);
 
   // Hadith State
@@ -1802,7 +1847,6 @@ export default function App() {
                   <h3 className="text-xl font-bold text-white">{masehiDate}</h3>
                   <p className="text-gold-light text-xs">{hijriDate}</p>
                 </div>
-
                 <div className="grid grid-cols-1 gap-3">
                   {Object.entries(PRAYER_TIMES).map(([name, time]) => (
                     <div key={name} className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
