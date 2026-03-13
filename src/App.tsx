@@ -279,15 +279,8 @@ export default function App() {
       setUser(newUser);
       
       if (event === 'SIGNED_IN' && newUser) {
-        // When signing in, we want to ensure local data is pushed BEFORE we start the regular fetch cycle
-        const localJuz = localStorage.getItem('ramadan_juz');
-        const localTarawih = localStorage.getItem('ramadan_tarawih');
-        
-        if (localJuz || localTarawih) {
-          await syncDataToCloud(newUser);
-        }
-        
-        // Reset fetch state to trigger a fresh fetch from cloud (which now has synced data)
+        // Reset fetch state to trigger a fresh fetch from cloud.
+        // The fetchCloudData effect will handle the "Cloud Wins" logic.
         setIsDataFetched(false);
       }
     });
@@ -366,13 +359,17 @@ export default function App() {
           .single();
 
         if (data && !error) {
-          // Update local state from cloud
+          // CLOUD WINS: Update local state from cloud
           setCurrentJuz(data.juz);
           setTarawihNights(data.tarawih);
           if (data.mood) {
             const moodObj = MOODS.find(m => m.label === data.mood);
             if (moodObj) setSelectedMood(moodObj);
           }
+          setIsDataFetched(true);
+        } else if (error && (error.code === 'PGRST116' || error.message?.includes('0 rows'))) {
+          // NEW USER: No data in cloud yet. Sync local data to cloud for the first time.
+          await syncDataToCloud(user);
           setIsDataFetched(true);
         }
       } catch (e) {
@@ -397,7 +394,7 @@ export default function App() {
     if (user?.id && supabase && !isInitialLoadRef.current && !isFetchingData) {
       const timer = setTimeout(() => {
         syncDataToCloud();
-      }, 1000); // Debounce sync to avoid spamming Supabase
+      }, 3000); // Debounce sync to 3 seconds to be more conservative with API usage
       return () => clearTimeout(timer);
     }
   }, [currentJuz, tarawihNights, selectedMood, user?.id, isFetchingData]);
