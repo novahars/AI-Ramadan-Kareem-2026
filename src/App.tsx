@@ -580,31 +580,30 @@ const hijriGreeting = useMemo(() => {
           throw error;
         }
       } else {
-        // Cek apakah email terdaftar di profiles
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('email_identity', email) // I'll assume there's an email_identity or similar. 
-          // Actually, let's use a more reliable way if possible.
-          // If I don't have email in profiles, I might need to add it.
-          .maybeSingle();
-
-        // If we can't check via profiles easily, we'll rely on the error from signInWithOtp
-        // but let's try to be proactive if possible.
-        
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
             shouldCreateUser: false,
           }
         });
-        if (error) throw error;
+        if (error) {
+          if (error.message.includes('Signups not allowed for otp') || error.message.includes('User not found')) {
+            showToast("Mohon maaf email anda belum terdaftar", 'error');
+            setIsLoading(false);
+            return;
+          }
+          throw error;
+        }
       }
       showToast("Kode OTP telah dikirim ke Gmail Anda ✨");
       setIsVerifying(true);
       setCountdown(60);
     } catch (err: any) {
-      showToast(err.message || "Gagal mengirim OTP.", 'error');
+      if (err.message?.toLowerCase().includes('rate limit')) {
+        showToast("Batas pengiriman email tercapai. Mohon tunggu beberapa saat.", 'error');
+      } else {
+        showToast(err.message || "Gagal mengirim OTP.", 'error');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -625,12 +624,6 @@ const hijriGreeting = useMemo(() => {
         });
         if (error) throw error;
         
-        if (rememberMe) {
-          localStorage.setItem('remembered_email', email);
-        } else {
-          localStorage.removeItem('remembered_email');
-        }
-
         showToast("Selamat Datang di LisanulHaq! ✨");
         setShowLoginPrompt(false);
         setIsVerifying(false);
@@ -641,10 +634,11 @@ const hijriGreeting = useMemo(() => {
       }
     } catch (err: any) {
       if (err.message?.toLowerCase().includes('rate limit')) {
-        showToast("Batas pengiriman email tercapai. Mohon tunggu 1 jam atau hubungkan SMTP di Supabase.", 'error');
+        showToast("Batas pengiriman email tercapai. Mohon tunggu beberapa saat.", 'error');
       } else if (err.message?.toLowerCase().includes('user not found') || 
                  err.message?.toLowerCase().includes('not found') ||
-                 err.message?.toLowerCase().includes('invalid login credentials')) {
+                 err.message?.toLowerCase().includes('invalid login credentials') ||
+                 err.message?.includes('Signups not allowed for otp')) {
         showToast("Mohon maaf email anda belum terdaftar", 'error');
       } else {
         showToast(err.message || "Gagal memproses.", 'error');
