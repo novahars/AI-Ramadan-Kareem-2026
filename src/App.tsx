@@ -907,29 +907,60 @@ const hijriGreeting = useMemo(() => {
     return favorites.some(f => f.type === type && JSON.stringify(f.content) === JSON.stringify(content));
   };
 
-  const speakSequence = (arabic: string, translation: string, riwayat: string, onFinish?: () => void) => {
+  const speakSequence = (arabic: string, translation: string, riwayat: string, type: 'hadith' | 'doa' | 'food' = 'hadith', onFinish?: () => void) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       
-      const utterance1 = new SpeechSynthesisUtterance(translation);
-      utterance1.lang = 'id-ID';
-      utterance1.rate = 1.0;
+      // Clean text from asterisks (don't read "asterisk")
+      const clean = (text: string) => (text || '').replace(/\*/g, '');
 
-      const utterance2 = new SpeechSynthesisUtterance(arabic);
-      utterance2.lang = 'ar-SA';
-      utterance2.rate = 0.6;
+      const cleanArabic = clean(arabic);
+      const cleanTranslation = clean(translation);
+      const cleanRiwayat = clean(riwayat);
 
-      const utterance3 = new SpeechSynthesisUtterance(riwayat);
-      utterance3.lang = 'id-ID';
-      utterance3.rate = 1.0;
+      // Differentiate settings based on type
+      let arabicRate = 0.6;
+      let translationRate = 1.0;
+      let pitch = 1.0;
 
-      if (onFinish) {
-        utterance3.onend = onFinish;
+      if (type === 'doa') {
+        arabicRate = 0.5; // Slower for Doa
+        pitch = 1.05; 
+      } else if (type === 'food') {
+        arabicRate = 1.0; // Normal rate for food instructions
       }
 
-      window.speechSynthesis.speak(utterance1);
-      window.speechSynthesis.speak(utterance2);
-      window.speechSynthesis.speak(utterance3);
+      const utteranceAr = new SpeechSynthesisUtterance(cleanArabic);
+      // If it's food, the "arabic" field likely contains instructions in Indonesian
+      utteranceAr.lang = type === 'food' ? 'id-ID' : 'ar-SA';
+      utteranceAr.rate = arabicRate;
+      utteranceAr.pitch = pitch;
+
+      const utteranceId = new SpeechSynthesisUtterance(cleanTranslation);
+      utteranceId.lang = 'id-ID';
+      utteranceId.rate = translationRate;
+      utteranceId.pitch = pitch;
+
+      const utteranceRiwayat = new SpeechSynthesisUtterance(cleanRiwayat);
+      utteranceRiwayat.lang = 'id-ID';
+      utteranceRiwayat.rate = translationRate;
+      utteranceRiwayat.pitch = pitch;
+
+      if (onFinish) {
+        utteranceRiwayat.onend = onFinish;
+      }
+
+      if (type === 'food') {
+        // For food: Name -> Instructions -> Source
+        window.speechSynthesis.speak(utteranceId); // Name
+        window.speechSynthesis.speak(utteranceAr); // Instructions
+        window.speechSynthesis.speak(utteranceRiwayat); // Source
+      } else {
+        // For Hadith/Doa: Arabic -> Translation -> Riwayat
+        window.speechSynthesis.speak(utteranceAr);
+        window.speechSynthesis.speak(utteranceId);
+        window.speechSynthesis.speak(utteranceRiwayat);
+      }
     } else {
       alert("Maaf, browser Anda tidak mendukung fitur suara.");
     }
@@ -995,7 +1026,7 @@ const hijriGreeting = useMemo(() => {
         reason: data.content["explanation"]
       };
       setMatchedRecipe(newRecipe);
-      speakSequence(newRecipe.instructions, newRecipe.name, data.content["source"], () => {
+      speakSequence(newRecipe.instructions, newRecipe.name, newRecipe.source, 'food', () => {
         if (!user) setShowLoginPrompt(true);
       });
     }
@@ -1014,7 +1045,7 @@ const hijriGreeting = useMemo(() => {
         reason: data.content["explanation"]
       };
       setAiHadith(newHadith);
-      speakSequence(newHadith.translation, newHadith.arabic, newHadith.source, () => {
+      speakSequence(newHadith.arabic, newHadith.translation, newHadith.source, 'hadith', () => {
         if (!user) setShowLoginPrompt(true);
       });
     }
@@ -1430,7 +1461,7 @@ const hijriGreeting = useMemo(() => {
                   <button
                     onClick={() => {
                       const h = aiHadith || randomHadith;
-                      speakSequence(h.translation, h.arabic, h.source);
+                      speakSequence(h.arabic, h.translation, h.source, 'hadith');
                     }}
                     className="p-2 bg-gold/10 text-gold rounded-full hover:bg-gold/20 transition-all"
                     title="Dengarkan"
@@ -2348,7 +2379,7 @@ const hijriGreeting = useMemo(() => {
                     <p className="text-sm text-gold-light/80 italic leading-relaxed">{doa.translation}</p>
                     <p className="text-[10px] text-gold/60 font-bold uppercase tracking-wider">Riwayat: {doa.riwayat}</p>
                     <button 
-                      onClick={() => speakSequence(doa.arabic, doa.translation, doa.riwayat)}
+                      onClick={() => speakSequence(doa.arabic, doa.translation, doa.riwayat, 'doa')}
                       className="flex items-center gap-2 text-[10px] font-black text-gold uppercase tracking-widest"
                     >
                       <Volume2 size={14} /> Dengarkan Doa, Arti, & Riwayat
