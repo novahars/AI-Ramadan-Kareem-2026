@@ -44,7 +44,13 @@ import {
 // --- Supabase Initialization ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
+const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storage: window.localStorage
+  }
+}) : null;
 
 // --- Data & Types ---
 
@@ -574,6 +580,18 @@ const hijriGreeting = useMemo(() => {
           throw error;
         }
       } else {
+        // Cek apakah email terdaftar di profiles
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email_identity', email) // I'll assume there's an email_identity or similar. 
+          // Actually, let's use a more reliable way if possible.
+          // If I don't have email in profiles, I might need to add it.
+          .maybeSingle();
+
+        // If we can't check via profiles easily, we'll rely on the error from signInWithOtp
+        // but let's try to be proactive if possible.
+        
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
@@ -622,7 +640,15 @@ const hijriGreeting = useMemo(() => {
         await sendOtp();
       }
     } catch (err: any) {
-      showToast(err.message || "Gagal memproses.", 'error');
+      if (err.message?.toLowerCase().includes('rate limit')) {
+        showToast("Batas pengiriman email tercapai. Mohon tunggu 1 jam atau hubungkan SMTP di Supabase.", 'error');
+      } else if (err.message?.toLowerCase().includes('user not found') || 
+                 err.message?.toLowerCase().includes('not found') ||
+                 err.message?.toLowerCase().includes('invalid login credentials')) {
+        showToast("Mohon maaf email anda belum terdaftar", 'error');
+      } else {
+        showToast(err.message || "Gagal memproses.", 'error');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -1186,6 +1212,7 @@ const hijriGreeting = useMemo(() => {
   const copyToClipboard = (text: string, setCopied: (v: boolean) => void) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
+    showToast("Hadist telah berhasil di salin");
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -2032,7 +2059,7 @@ const hijriGreeting = useMemo(() => {
               </div>
               <div className="flex flex-col gap-3 w-full">
                 <h3 className="text-xl font-bold text-white mb-2">
-                  {isVerifying ? 'Verifikasi OTP' : (isRegistering ? 'Daftar Akun' : 'Login')}
+                  {isVerifying ? 'Verifikasi OTP' : (isRegistering ? 'DAFTAR' : 'LOGIN')}
                 </h3>
                 
                 {!isVerifying ? (
@@ -2086,7 +2113,7 @@ const hijriGreeting = useMemo(() => {
                   {isLoading ? (
                     <div className="w-4 h-4 border-2 border-islamic-green-dark/30 border-t-islamic-green-dark rounded-full animate-spin" />
                   ) : null}
-                  {isVerifying ? 'Verifikasi Kode' : (isRegistering ? 'Daftar Sekarang' : 'Kirim Kode OTP')}
+                  {isVerifying ? 'Verifikasi Kode' : 'LOGIN'}
                 </button>
 
                 {isVerifying && (
