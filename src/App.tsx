@@ -488,6 +488,13 @@ export default function App() {
   const [otp, setOtp] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [isOtpVerified, setIsOtpVerified] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [resetRequests, setResetRequests] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('reset_requests');
+    return saved ? JSON.parse(saved) : {};
+  });
   const [rememberMe, setRememberMe] = useState(true);
   const [countdown, setCountdown] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -561,49 +568,41 @@ export default function App() {
     setToast({ message, type });
   };
 
-  const sendOtp = async () => {
-    if (!supabase) return;
+  const resendOtp = async () => {
+    if (!supabase || !email) return;
     setIsLoading(true);
     try {
-      if (isRegistering) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password: password || 'dummy_password_123',
-        });
+      const withTimeout = (promise: Promise<any>, timeoutMs: number = 15000) => {
+        return Promise.race([
+          promise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Koneksi lambat. Silakan coba lagi.")), timeoutMs))
+        ]);
+      };
 
-        if (error) {
-          if (error.message.toLowerCase().includes('already registered') || error.message.toLowerCase().includes('user already exists')) {
-            showToast("Email sudah terdaftar! Silakan login.", 'error');
-            setIsLoading(false);
-            return;
-          }
-          throw error;
+      if (isForgotPassword) {
+        const now = Date.now();
+        const lastRequest = resetRequests[email] || 0;
+        const oneHour = 60 * 60 * 1000;
+        if (now - lastRequest < oneHour) {
+          const remaining = Math.ceil((oneHour - (now - lastRequest)) / (60 * 1000));
+          showToast(`Tunggu ${remaining} menit lagi untuk kirim ulang ke email ini.`, 'error');
+          setIsLoading(false);
+          return;
         }
-      } else {
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: {
-            shouldCreateUser: false,
-          }
-        });
-        if (error) {
-          if (error.message.includes('Signups not allowed for otp') || error.message.includes('User not found')) {
-            showToast("Mohon maaf email anda belum terdaftar", 'error');
-            setIsLoading(false);
-            return;
-          }
-          throw error;
-        }
+        const { error } = await withTimeout(supabase.auth.resetPasswordForEmail(email));
+        if (error) throw error;
+        
+        const newRequests = { ...resetRequests, [email]: now };
+        setResetRequests(newRequests);
+        localStorage.setItem('reset_requests', JSON.stringify(newRequests));
+      } else if (isRegistering) {
+        const { error } = await withTimeout(supabase.auth.signUp({ email, password }));
+        if (error) throw error;
       }
-      showToast("Kode OTP telah dikirim ke Gmail Anda ✨");
-      setIsVerifying(true);
       setCountdown(60);
+      showToast("Kode OTP telah dikirim ulang ✨");
     } catch (err: any) {
-      if (err.message?.toLowerCase().includes('rate limit')) {
-        showToast("Batas pengiriman email tercapai. Mohon tunggu beberapa saat.", 'error');
-      } else {
-        showToast(err.message || "Gagal mengirim OTP.", 'error');
-      }
+      showToast(err.message || "Gagal mengirim ulang OTP.", 'error');
     } finally {
       setIsLoading(false);
     }
@@ -614,32 +613,122 @@ export default function App() {
       showToast("Supabase belum dikonfigurasi.", 'error');
       return;
     }
+
+    if (!email || (!isVerifying && !password && !isForgotPassword)) {
+      showToast("Email dan Password harus diisi.", 'error');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      if (isVerifying) {
-        const { error } = await supabase.auth.verifyOtp({
-          email,
-          token: otp,
-          type: isRegistering ? 'signup' : 'email',
-        });
-        if (error) throw error;
+      const withTimeout = (promise: Promise<any>, timeoutMs: number = 20000) => {
+        return Promise.race([
+          promise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Koneksi lambat atau server sibuk. Silakan coba lagi.")), timeoutMs))
+        ]);
+      };
 
+      if (isForgotPassword) {
+        if (isVerifying) {
+          // Verify OTP for recovery
+          const { error } = await withTimeout(supabase.auth.verifyOtp({
+            email,
+            token: otp,
+            type: 'recovery',
+          }));
+          if (error) throw error;
+          
+          setIsVerifying(false);
+          setIsOtpVerified(true);
+          showToast("OTP Berhasil! Silakan masukkan password baru.");
+        } else if (isOtpVerified) {
+          if (!newPassword || newPassword.length < 6) {
+            showToast("Password baru minimal 6 karakter.", 'error');
+            setIsLoading(false);
+            return;
+          }
+          // Update password after OTP verified
+          const { error } = await withTimeout(supabase.auth.updateUser({
+            password: newPassword
+          }));
+          if (error) throw error;
+          
+          showToast("Password berhasil diperbarui! Silakan login.");
+          setIsForgotPassword(false);
+          setIsOtpVerified(false);
+          setNewPassword('');
+          setPassword('');
+          setOtp('');
+        } else {
+          // Send Reset OTP
+          const now = Date.now();
+          const lastRequest = resetRequests[email] || 0;
+          const oneHour = 60 * 60 * 1000;
+          if (now - lastRequest < oneHour) {
+            const remaining = Math.ceil((oneHour - (now - lastRequest)) / (60 * 1000));
+            showToast(`Maaf, password hanya bisa diganti 1 jam sekali untuk email ini. Tunggu ${remaining} menit lagi.`, 'error');
+            setIsLoading(false);
+            return;
+          }
+
+          const { error } = await withTimeout(supabase.auth.resetPasswordForEmail(email));
+          if (error) throw error;
+
+          const newRequests = { ...resetRequests, [email]: now };
+          setResetRequests(newRequests);
+          localStorage.setItem('reset_requests', JSON.stringify(newRequests));
+          
+          setIsVerifying(true);
+          setCountdown(60);
+          showToast("Kode OTP pemulihan telah dikirim ke email Anda ✨");
+        }
+      } else if (isRegistering) {
+        if (isVerifying) {
+          const { error } = await withTimeout(supabase.auth.verifyOtp({
+            email,
+            token: otp,
+            type: 'signup',
+          }));
+          if (error) throw error;
+          
+          showToast("Pendaftaran berhasil! Selamat datang ✨");
+          setShowLoginPrompt(false);
+          setIsRegistering(false);
+          setIsVerifying(false);
+          setOtp('');
+        } else {
+          const { error } = await withTimeout(supabase.auth.signUp({
+            email,
+            password,
+          }));
+          if (error) throw error;
+          
+          setIsVerifying(true);
+          setCountdown(60);
+          showToast("Kode verifikasi telah dikirim ke email Anda ✨");
+        }
+      } else {
+        const { error } = await withTimeout(supabase.auth.signInWithPassword({
+          email,
+          password,
+        }));
+        if (error) throw error;
+        
+        if (rememberMe) {
+          localStorage.setItem('remembered_email', email);
+        } else {
+          localStorage.removeItem('remembered_email');
+        }
+        
         showToast("Selamat Datang di LisanulHaq! ✨");
         setShowLoginPrompt(false);
-        setIsVerifying(false);
-        setOtp('');
-        setCountdown(0);
-      } else {
-        await sendOtp();
+        setPassword('');
       }
     } catch (err: any) {
       if (err.message?.toLowerCase().includes('rate limit')) {
         showToast("Batas pengiriman email tercapai. Mohon tunggu beberapa saat.", 'error');
-      } else if (err.message?.toLowerCase().includes('user not found') ||
-        err.message?.toLowerCase().includes('not found') ||
-        err.message?.toLowerCase().includes('invalid login credentials') ||
-        err.message?.includes('Signups not allowed for otp')) {
-        showToast("Mohon maaf email anda belum terdaftar", 'error');
+      } else if (err.message?.toLowerCase().includes('invalid login credentials')) {
+        showToast("Email atau Password salah.", 'error');
       } else {
         showToast(err.message || "Gagal memproses.", 'error');
       }
@@ -2084,10 +2173,12 @@ export default function App() {
               </div>
               <div className="flex flex-col gap-3 w-full">
                 <h3 className="text-xl font-bold text-white mb-2">
-                  {isVerifying ? 'Verifikasi OTP' : (isRegistering ? 'DAFTAR' : 'LOGIN')}
+                  {isForgotPassword 
+                    ? (isVerifying ? 'Verifikasi OTP Pemulihan' : (isOtpVerified ? 'Atur Password Baru' : 'Lupa Password'))
+                    : (isVerifying ? 'Verifikasi OTP' : (isRegistering ? 'DAFTAR' : 'LOGIN'))}
                 </h3>
 
-                {!isVerifying ? (
+                {!isVerifying && !isOtpVerified ? (
                   <>
                     <input
                       type="email"
@@ -2097,37 +2188,61 @@ export default function App() {
                       className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20"
                     />
 
-                    <div className="flex items-center gap-2 ml-2 mb-2">
-                      <input
-                        type="checkbox"
-                        id="rememberMe"
-                        checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                        className="w-4 h-4 accent-gold bg-transparent border-gold/50 rounded"
-                      />
-                      <label htmlFor="rememberMe" className="text-[10px] text-white/60 font-bold uppercase tracking-widest cursor-pointer">
-                        Ingat Saya (30 Hari)
-                      </label>
-                    </div>
-
-                    {isRegistering && (
+                    {!isForgotPassword && (
                       <input
                         type="password"
-                        placeholder="Password (Min. 6 Karakter)"
+                        placeholder="Password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20"
                       />
                     )}
+
+                    {!isForgotPassword && (
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="rememberMe"
+                            checked={rememberMe}
+                            onChange={(e) => setRememberMe(e.target.checked)}
+                            className="w-4 h-4 accent-gold bg-transparent border-gold/50 rounded"
+                          />
+                          <label htmlFor="rememberMe" className="text-[10px] text-white/60 font-bold uppercase tracking-widest cursor-pointer">
+                            Ingat Saya
+                          </label>
+                        </div>
+                        <button 
+                          onClick={() => setIsForgotPassword(true)}
+                          className="text-[10px] text-gold font-bold uppercase tracking-widest hover:underline"
+                        >
+                          Lupa Password?
+                        </button>
+                      </div>
+                    )}
                   </>
+                ) : isVerifying ? (
+                  <div className="space-y-4">
+                    <p className="text-[10px] text-white/60 text-center uppercase tracking-widest">Masukkan kode yang dikirim ke email Anda</p>
+                    <input
+                      type="text"
+                      placeholder="OTP"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value)}
+                      className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20 text-center tracking-[0.5em] font-bold"
+                    />
+                  </div>
                 ) : (
-                  <input
-                    type="text"
-                    placeholder="Masukkan Kode OTP"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20 text-center tracking-[0.5em] font-bold"
-                  />
+                  <div className="space-y-4">
+                    <p className="text-[10px] text-white/60 text-center uppercase tracking-widest">Masukkan password baru Anda</p>
+                    <input
+                      type="password"
+                      placeholder="Password Baru"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20"
+                    />
+                  </div>
                 )}
 
                 <button
@@ -2138,20 +2253,31 @@ export default function App() {
                   {isLoading ? (
                     <div className="w-4 h-4 border-2 border-islamic-green-dark/30 border-t-islamic-green-dark rounded-full animate-spin" />
                   ) : null}
-                  {isVerifying ? 'Verifikasi Kode' : 'LOGIN'}
+                  {isForgotPassword 
+                    ? (isVerifying ? 'Verifikasi OTP' : (isOtpVerified ? 'Simpan Password' : 'Kirim OTP'))
+                    : (isVerifying ? 'Verifikasi Kode' : (isRegistering ? 'DAFTAR' : 'LOGIN'))}
                 </button>
 
                 {isVerifying && (
                   <button
-                    onClick={sendOtp}
-                    disabled={countdown > 0}
+                    onClick={resendOtp}
+                    disabled={countdown > 0 || isLoading}
                     className={`w-full py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${countdown > 0 ? 'text-white/30 cursor-not-allowed' : 'text-gold hover:text-gold-light underline'}`}
                   >
                     {countdown > 0 ? `Kirim Ulang OTP dalam ${countdown}s` : 'Kirim Ulang OTP'}
                   </button>
                 )}
 
-                {!isVerifying && (
+                {isForgotPassword && !isVerifying && !isOtpVerified && (
+                  <button
+                    onClick={() => setIsForgotPassword(false)}
+                    className="text-white/40 text-[10px] font-bold uppercase tracking-widest hover:text-white"
+                  >
+                    Kembali ke Login
+                  </button>
+                )}
+
+                {!isVerifying && !isForgotPassword && !isOtpVerified && (
                   <button
                     onClick={() => setIsRegistering(!isRegistering)}
                     className="text-gold text-xs underline"
