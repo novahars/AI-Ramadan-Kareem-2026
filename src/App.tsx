@@ -477,11 +477,12 @@ const hijriGreeting = useMemo(() => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(localStorage.getItem('remembered_email') || '');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [countdown, setCountdown] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -490,6 +491,48 @@ const hijriGreeting = useMemo(() => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [fullName, setFullName] = useState('');
   const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user && showProfileModal) {
+      fetchProfile();
+    }
+  }, [user, showProfileModal]);
+
+  const fetchProfile = async () => {
+    if (!supabase || !user) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      if (data) {
+        setFullName(data.full_name || '');
+        setBio(data.bio || '');
+        setAvatarUrl(data.avatar_url || '');
+        setAvatarPreview(data.avatar_url || null);
+      }
+    } catch (err: any) {
+      console.error("Error fetching profile:", err);
+    }
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 1024 * 1024) {
+        showToast("Ukuran gambar maksimal 1MB!", "error");
+        return;
+      }
+      setAvatarFile(file);
+      setAvatarPreview(URL.createObjectURL(file));
+    }
+  };
 
   useEffect(() => {
     if (toast) {
@@ -563,6 +606,13 @@ const hijriGreeting = useMemo(() => {
           type: isRegistering ? 'signup' : 'email',
         });
         if (error) throw error;
+        
+        if (rememberMe) {
+          localStorage.setItem('remembered_email', email);
+        } else {
+          localStorage.removeItem('remembered_email');
+        }
+
         showToast("Selamat Datang di LisanulHaq! ✨");
         setShowLoginPrompt(false);
         setIsVerifying(false);
@@ -582,12 +632,38 @@ const hijriGreeting = useMemo(() => {
     if (!supabase || !user) return;
     setIsLoading(true);
     try {
+      let finalAvatarUrl = avatarUrl;
+
+      if (avatarFile) {
+        const fileExt = avatarFile.name.split('.').pop();
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+        const filePath = fileName;
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, avatarFile, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+        
+        finalAvatarUrl = publicUrl;
+      }
+
       const { error } = await supabase
         .from('profiles')
-        .update({ full_name: fullName, bio: bio })
-        .eq('id', user.id);
+        .upsert({ 
+          id: user.id,
+          full_name: fullName, 
+          bio: bio,
+          avatar_url: finalAvatarUrl,
+          updated_at: new Date().toISOString()
+        });
       
       if (error) throw error;
+      setAvatarUrl(finalAvatarUrl);
       showToast("Profil berhasil diperbarui! 🌿");
       setShowProfileModal(false);
     } catch (err: any) {
@@ -1150,12 +1226,11 @@ const hijriGreeting = useMemo(() => {
               {user ? (
                 <div className="flex items-center gap-2 bg-white/5 border border-gold/20 p-1.5 pl-3 rounded-full">
                   <div className="text-right hidden lg:block">
-                    <p className="text-[9px] uppercase font-black text-gold tracking-widest leading-none">Connected</p>
-                    <p className="text-[11px] font-bold text-white truncate max-w-[80px] leading-none mt-1">{user.user_metadata?.full_name || user.email}</p>
+                    <p className="text-[11px] font-bold text-white truncate max-w-[80px] leading-none mt-1">{fullName || user.email}</p>
                   </div>
                   <div className="w-8 h-8 rounded-full border border-gold overflow-hidden bg-gold/20 flex items-center justify-center">
-                    {user.user_metadata?.avatar_url ? (
-                      <img src={user.user_metadata.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
                       <User size={16} className="text-gold" />
                     )}
@@ -1969,6 +2044,20 @@ const hijriGreeting = useMemo(() => {
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20"
                     />
+                    
+                    <div className="flex items-center gap-2 ml-2 mb-2">
+                      <input 
+                        type="checkbox" 
+                        id="rememberMe"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4 h-4 accent-gold bg-transparent border-gold/50 rounded"
+                      />
+                      <label htmlFor="rememberMe" className="text-[10px] text-white/60 font-bold uppercase tracking-widest cursor-pointer">
+                        Ingat Saya (30 Hari)
+                      </label>
+                    </div>
+
                     {isRegistering && (
                       <input
                         type="password"
@@ -2076,12 +2165,23 @@ const hijriGreeting = useMemo(() => {
               </button>
 
               <div className="flex flex-col items-center text-center gap-6">
-                <div className="w-20 h-20 bg-gold/10 rounded-full flex items-center justify-center text-gold border border-gold/20">
-                  <User size={40} />
+                <div className="relative group">
+                  <div className="w-24 h-24 bg-gold/10 rounded-full flex items-center justify-center text-gold border-2 border-gold/30 overflow-hidden shadow-xl">
+                    {avatarPreview ? (
+                      <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <User size={48} />
+                    )}
+                  </div>
+                  <label className="absolute bottom-0 right-0 p-2 bg-gold text-islamic-green-dark rounded-full cursor-pointer shadow-lg hover:scale-110 transition-transform">
+                    <Play size={14} className="rotate-90" /> {/* Using Play as a simple upload icon substitute or just a generic icon */}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+                  </label>
                 </div>
                 
                 <div className="w-full space-y-4">
                   <h2 className="text-2xl font-black text-white uppercase tracking-widest">Lengkapi Profil</h2>
+                  <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] -mt-2">Maksimal Ukuran Gambar 1MB</p>
                   
                   <div className="space-y-2 text-left">
                     <label className="text-[10px] font-black text-gold uppercase tracking-widest ml-2">Nama Lengkap</label>
