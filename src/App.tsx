@@ -36,7 +36,9 @@ import {
   Share2,
   ChevronRight,
   X,
-  Calendar
+  Calendar,
+  AlertCircle,
+  Save
 } from 'lucide-react';
 
 // --- Supabase Initialization ---
@@ -178,10 +180,30 @@ const MUROTTAL_LINKS: Record<number, string> = {
 };
 
 const DOA_RAMADAN = [
-  { title: "Doa Buka Puasa", arabic: "ذَهَبَ الظَّمَأُ وَابْتَلَّتِ الْعُرُوقُ وَثَبَتَ الأَجْرُ إِنْ شَاءَ اللَّهُ", translation: "Telah hilang rasa haus, telah basah urat-urat, dan telah tetap pahala, insya Allah." },
-  { title: "Niat Puasa Ramadan", arabic: "نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هَذِهِ السَّنَةِ لِلَّهِ تَعَالَى", translation: "Aku niat berpuasa esok hari untuk menunaikan kewajiban bulan Ramadan tahun ini karena Allah Ta'ala." },
-  { title: "Doa Lailatul Qadar", arabic: "اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي", translation: "Ya Allah, sesungguhnya Engkau Maha Pengampun dan menyukai ampunan, maka ampunilah aku." },
-  { title: "Doa Berbuka (Versi Lain)", arabic: "اَللّهُمَّ لَكَ صُمْتُ وَبِكَ آمَنْتُ وَعَلَى رِزْقِكَ أَفْطَرْتُ", translation: "Ya Allah, untuk-Mu aku berpuasa, kepada-Mu aku beriman, dan dengan rezeki-Mu aku berbuka." },
+  { 
+    title: "Doa Buka Puasa", 
+    arabic: "ذَهَبَ الظَّمَأُ وَابْتَلَّتِ الْعُرُوقُ وَثَبَتَ الأَجْرُ إِنْ شَاءَ اللَّهُ", 
+    translation: "Telah hilang rasa haus, telah basah urat-urat, dan telah tetap pahala, insya Allah.",
+    riwayat: "HR. Abu Daud (No. 2357)."
+  },
+  { 
+    title: "Niat Puasa Ramadan", 
+    arabic: "نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هَذِهِ السَّنَةِ لِلَّهِ تَعَالَى", 
+    translation: "Aku niat berpuasa esok hari untuk menunaikan kewajiban bulan Ramadan tahun ini karena Allah Ta'ala.",
+    riwayat: "Secara lafal, ini adalah susunan para ulama (khususnya Madzhab Syafi'i) untuk memantapkan niat di dalam hati. Dasarnya adalah hadits umum tentang niat: HR. Bukhari & Muslim ('Innamal a'malu binniyat')."
+  },
+  { 
+    title: "Doa Lailatul Qadar", 
+    arabic: "اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي", 
+    translation: "Ya Allah, sesungguhnya Engkau Maha Pengampun dan menyukai ampunan, maka ampunilah aku.",
+    riwayat: "HR. Tirmidzi (No. 3513) & Ibnu Majah (No. 3850). Status: Shahih. Ini adalah doa yang diajarkan Rasulullah SAW kepada Aisyah R.A."
+  },
+  { 
+    title: "Doa Berbuka (Versi Lain)", 
+    arabic: "اَللّهُمَّ لَكَ صُمْتُ وَبِكَ آمَنْتُ وَعَلَى رِزْقِكَ أَفْطَرْتُ", 
+    translation: "Ya Allah, untuk-Mu aku berpuasa, kepada-Mu aku beriman, dan dengan rezeki-Mu aku berbuka.",
+    riwayat: "HR. Abu Daud (No. 2358). Status: Hadits ini sering digunakan, meski secara sanad dinilai mursal (lemah) oleh sebagian ulama, namun maknanya baik dan sudah sangat masyhur di masyarakat."
+  },
 ];
 
 const PRAYER_TIMES = {
@@ -282,6 +304,9 @@ export default function App() {
   const [murottalError, setMurottalError] = useState<string | null>(null);
   const murottalRef = useRef<HTMLAudioElement | null>(null);
   const [murottalLink, setMurottalLink] = useState('');
+  const [murottalCurrentTime, setMurottalCurrentTime] = useState(0);
+  const [murottalDuration, setMurottalDuration] = useState(0);
+  const [jumpInput, setJumpInput] = useState('');
 
   // Favorites State
   const [favorites, setFavorites] = useState<any[]>([]);
@@ -411,7 +436,7 @@ const hijriGreeting = useMemo(() => {
       subtitle: `Bulan ${currentHijriMonth} ${displayYearLabel}`
     };
   }
-}, [hijriDate]);
+}, [hijriDate, checkIsRamadan()]);
   const scheduleTitle = useMemo(() => {
     const ramadanDay = getRamadanDay();
     return ramadanDay ? `Ramadan Hari ke-${ramadanDay}` : "Jadwal Shalat Harian";
@@ -452,17 +477,124 @@ const hijriGreeting = useMemo(() => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const loginWithGoogle = async () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Profile States
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [bio, setBio] = useState('');
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    let timer: any;
+    if (countdown > 0) {
+      timer = setInterval(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [countdown]);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+  };
+
+  const sendOtp = async () => {
+    if (!supabase) return;
+    setIsLoading(true);
+    try {
+      if (isRegistering) {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password: password || 'dummy_password_123',
+        });
+        
+        if (error) {
+          if (error.message.toLowerCase().includes('already registered') || error.message.toLowerCase().includes('user already exists')) {
+            showToast("Email sudah terdaftar! Silakan login.", 'error');
+            setIsLoading(false);
+            return;
+          }
+          throw error;
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: {
+            shouldCreateUser: false,
+          }
+        });
+        if (error) throw error;
+      }
+      showToast("Kode OTP telah dikirim ke Gmail Anda ✨");
+      setIsVerifying(true);
+      setCountdown(60);
+    } catch (err: any) {
+      showToast(err.message || "Gagal mengirim OTP.", 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAuth = async () => {
     if (!supabase) {
-      alert("Supabase belum dikonfigurasi. Silakan atur VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY di environment variables.");
+      showToast("Supabase belum dikonfigurasi.", 'error');
       return;
     }
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin
+    setIsLoading(true);
+    try {
+      if (isVerifying) {
+        const { error } = await supabase.auth.verifyOtp({
+          email,
+          token: otp,
+          type: isRegistering ? 'signup' : 'email',
+        });
+        if (error) throw error;
+        showToast("Selamat Datang di LisanulHaq! ✨");
+        setShowLoginPrompt(false);
+        setIsVerifying(false);
+        setOtp('');
+        setCountdown(0);
+      } else {
+        await sendOtp();
       }
-    });
+    } catch (err: any) {
+      showToast(err.message || "Gagal memproses.", 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateProfile = async () => {
+    if (!supabase || !user) return;
+    setIsLoading(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: fullName, bio: bio })
+        .eq('id', user.id);
+      
+      if (error) throw error;
+      showToast("Profil berhasil diperbarui! 🌿");
+      setShowProfileModal(false);
+    } catch (err: any) {
+      showToast(err.message || "Gagal update profil", 'error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const logout = async () => {
@@ -679,24 +811,29 @@ const hijriGreeting = useMemo(() => {
     return favorites.some(f => f.type === type && JSON.stringify(f.content) === JSON.stringify(content));
   };
 
-  const speakSequence = (arabic: string, translation: string, source: string, onFinish?: () => void) => {
+  const speakSequence = (arabic: string, translation: string, riwayat: string, onFinish?: () => void) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
+      
+      const utterance1 = new SpeechSynthesisUtterance(translation);
+      utterance1.lang = 'id-ID';
+      utterance1.rate = 1.0;
 
-      const arabicUtterance = new SpeechSynthesisUtterance(arabic);
-      arabicUtterance.lang = 'ar-SA';
-      arabicUtterance.rate = 0.64; // Normal speed for Arabic
+      const utterance2 = new SpeechSynthesisUtterance(arabic);
+      utterance2.lang = 'ar-SA';
+      utterance2.rate = 0.6;
 
-      const translationUtterance = new SpeechSynthesisUtterance(`${translation}. Hadits Riwayat ${source}`);
-      translationUtterance.lang = 'id-ID';
-      translationUtterance.rate = 1.05; // Keep Indonesian speed
+      const utterance3 = new SpeechSynthesisUtterance(riwayat);
+      utterance3.lang = 'id-ID';
+      utterance3.rate = 1.0;
 
       if (onFinish) {
-        translationUtterance.onend = onFinish;
+        utterance3.onend = onFinish;
       }
 
-      window.speechSynthesis.speak(arabicUtterance);
-      window.speechSynthesis.speak(translationUtterance);
+      window.speechSynthesis.speak(utterance1);
+      window.speechSynthesis.speak(utterance2);
+      window.speechSynthesis.speak(utterance3);
     } else {
       alert("Maaf, browser Anda tidak mendukung fitur suara.");
     }
@@ -762,7 +899,7 @@ const hijriGreeting = useMemo(() => {
         reason: data.content["explanation"]
       };
       setMatchedRecipe(newRecipe);
-      speakSequence(newRecipe.name, newRecipe.instructions, data.content["source"], () => {
+      speakSequence(newRecipe.instructions, newRecipe.name, data.content["source"], () => {
         if (!user) setShowLoginPrompt(true);
       });
     }
@@ -781,7 +918,7 @@ const hijriGreeting = useMemo(() => {
         reason: data.content["explanation"]
       };
       setAiHadith(newHadith);
-      speakSequence(newHadith.arabic, newHadith.translation, newHadith.source, () => {
+      speakSequence(newHadith.translation, newHadith.arabic, newHadith.source, () => {
         if (!user) setShowLoginPrompt(true);
       });
     }
@@ -789,12 +926,23 @@ const hijriGreeting = useMemo(() => {
 
   const toggleMurottal = () => {
     if (!murottalRef.current) return;
+    
     if (isPlayingMurottal) {
       murottalRef.current.pause();
+      setIsPlayingMurottal(false);
     } else {
-      murottalRef.current.play();
+      const playPromise = murottalRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlayingMurottal(true);
+          })
+          .catch((error) => {
+            console.error("Playback failed:", error);
+            setIsPlayingMurottal(false);
+          });
+      }
     }
-    setIsPlayingMurottal(!isPlayingMurottal);
   };
 
   const playJuz = async (juz: number) => {
@@ -848,6 +996,76 @@ const hijriGreeting = useMemo(() => {
       }
       setIsPlayingMurottal(false);
     }
+  };
+
+  // 1. Simpan progres per Juz tiap kali detik berjalan
+  const handleTimeUpdate = () => {
+    if (murottalRef.current && currentJuz) {
+      const currentTime = murottalRef.current.currentTime;
+      setMurottalCurrentTime(currentTime);
+      // Key unik: murottal_progress_1, murottal_progress_2, dst.
+      localStorage.setItem(`murottal_progress_${currentJuz}`, currentTime.toString());
+      localStorage.setItem('last_played_juz', currentJuz.toString());
+    }
+  };
+
+  // 2. Muat progres saat audio berhasil dimuat
+  const handleLoadedMetadata = () => {
+    if (murottalRef.current && currentJuz) {
+      setMurottalDuration(murottalRef.current.duration || 0);
+      const savedTime = localStorage.getItem(`murottal_progress_${currentJuz}`);
+      if (savedTime) {
+        // Gunakan timeout kecil agar browser siap menerima perubahan currentTime
+        setTimeout(() => {
+          if (murottalRef.current) {
+            murottalRef.current.currentTime = parseFloat(savedTime);
+          }
+        }, 150);
+      }
+    }
+  };
+
+  // 3. Fungsi untuk lompat ke menit tertentu
+  const jumpToTime = () => {
+    const minutes = parseFloat(jumpInput);
+    if (isNaN(minutes) || minutes < 0) {
+      alert("Masukkan menit yang valid, Akhi.");
+      return;
+    }
+    
+    if (murottalRef.current) {
+      const seconds = minutes * 60;
+      const duration = murottalRef.current.duration;
+      
+      if (isNaN(duration)) {
+        alert("Audio belum siap, tunggu sebentar ya.");
+        return;
+      }
+
+      if (seconds <= duration) {
+        murottalRef.current.currentTime = seconds;
+        murottalRef.current.play().catch(() => setIsPlayingMurottal(false));
+        setIsPlayingMurottal(true);
+        setJumpInput('');
+      } else {
+        alert(`Durasi juz hanya sampai ${Math.floor(duration / 60)} menit, Akhi.`);
+      }
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    if (murottalRef.current) {
+      murottalRef.current.currentTime = newTime;
+      setMurottalCurrentTime(newTime);
+    }
+  };
+
+  const formatTime = (time: number) => {
+    if (isNaN(time) || time < 0) return "00:00";
+    const m = Math.floor(time / 60).toString().padStart(2, '0');
+    const s = Math.floor(time % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
   };
 
   const nisabValue = useMemo(() => {
@@ -942,21 +1160,34 @@ const hijriGreeting = useMemo(() => {
                       <User size={16} className="text-gold" />
                     )}
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      logout();
-                    }}
-                    className="p-2 hover:bg-red-500/20 text-white hover:text-red-400 rounded-full transition-all"
-                    title="Logout"
-                  >
-                    <LogOut size={16} />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right hidden sm:block">
+                      <p className="text-[10px] font-black text-gold uppercase tracking-tighter">Ahlan wa Sahlan,</p>
+                      <p className="text-xs font-bold text-white truncate max-w-[100px]">{user.email?.split('@')[0]}</p>
+                    </div>
+                    <button
+                      onClick={() => setShowProfileModal(true)}
+                      className="p-2 hover:bg-gold/20 text-gold rounded-full transition-all"
+                      title="Edit Profil"
+                    >
+                      <User size={16} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        logout();
+                      }}
+                      className="p-2 hover:bg-red-500/20 text-white hover:text-red-400 rounded-full transition-all"
+                      title="Logout"
+                    >
+                      <LogOut size={16} />
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button
-                  onClick={loginWithGoogle}
+                  onClick={() => setShowLoginPrompt(true)}
                   className="flex items-center gap-2 bg-gold text-islamic-green-dark px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-gold-light transition-all shadow-lg"
                 >
                   <LogIn size={14} />
@@ -1038,7 +1269,7 @@ const hijriGreeting = useMemo(() => {
               <div className="p-3 bg-gold/10 rounded-2xl text-gold group-hover:scale-110 transition-transform">
                 <Moon size={20} />
               </div>
-              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">Tarawih</span>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">{checkIsRamadan() ? 'Tarawih' : 'Qiyamul Lail'}</span>
             </button>
             <button 
               onClick={() => setShowDoa(true)}
@@ -1103,7 +1334,7 @@ const hijriGreeting = useMemo(() => {
                   <button
                     onClick={() => {
                       const h = aiHadith || randomHadith;
-                      speakSequence(h.arabic, h.translation, h.source);
+                      speakSequence(h.translation, h.arabic, h.source);
                     }}
                     className="p-2 bg-gold/10 text-gold rounded-full hover:bg-gold/20 transition-all"
                     title="Dengarkan"
@@ -1413,7 +1644,7 @@ const hijriGreeting = useMemo(() => {
                             <button
                               onClick={toggleMurottal}
                               disabled={!!murottalError}
-                              className={`p-3 ${murottalError ? 'bg-gray-500' : 'bg-gold'} text-islamic-green-dark rounded-full hover:scale-110 transition-all shadow-lg`}
+                              className={`p-3 ${murottalError ? 'bg-gray-500' : 'bg-gold'} text-islamic-green-dark rounded-full hover:scale-110 transition-all shadow-lg shrink-0`}
                             >
                               {isPlayingMurottal ? <Pause size={18} /> : <Play size={18} />}
                             </button>
@@ -1425,8 +1656,44 @@ const hijriGreeting = useMemo(() => {
                                 {murottalError ? murottalError : (currentJuz > 0 ? `Juz ${currentJuz}` : 'Custom Audio')}
                               </p>
                             </div>
-                            {!murottalError && <Volume2 size={16} className="text-gold/50" />}
+                            {!murottalError && <Volume2 size={16} className="text-gold/50 shrink-0" />}
                           </div>
+
+                          {!murottalError && (
+                            <div className="flex flex-col gap-2 mt-2">
+                              {/* Seekbar */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gold/70 font-mono">{formatTime(murottalCurrentTime)}</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max={isNaN(murottalDuration) ? 0 : murottalDuration}
+                                  value={isNaN(murottalCurrentTime) ? 0 : murottalCurrentTime}
+                                  onChange={handleSeek}
+                                  className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#C5A059] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#C5A059]"
+                                />
+                                <span className="text-[10px] text-gold/70 font-mono">{formatTime(murottalDuration)}</span>
+                              </div>
+
+                              {/* Jump Input */}
+                              <div className="flex items-center gap-2 mt-1">
+                                <input
+                                  type="number"
+                                  placeholder="Menit"
+                                  value={jumpInput}
+                                  onChange={(e) => setJumpInput(e.target.value)}
+                                  className="w-16 bg-emerald-900/50 border border-gold/30 rounded-lg px-2 py-1 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-gold transition-colors text-center"
+                                />
+                                <button
+                                  onClick={jumpToTime}
+                                  className="px-3 py-1 bg-gold/20 hover:bg-gold/40 border border-gold/50 text-gold rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                                >
+                                  Lompat
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
                           {murottalError && (
                             <p className="text-[10px] text-red-400 italic">
                               Tips: Pastikan browser mengizinkan audio dari sumber luar atau coba Juz lain.
@@ -1444,7 +1711,9 @@ const hijriGreeting = useMemo(() => {
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <Moon size={18} className="text-[#FFD700]" />
-                    <label className="text-sm uppercase font-black text-[#FFD700] tracking-[0.2em]">Tarawih Malam</label>
+                    <label className="text-sm uppercase font-black text-[#FFD700] tracking-[0.2em]">
+                      {checkIsRamadan() ? 'Tarawih Malam' : 'Qiyamul Lail'}
+                    </label>
                   </div>
                   <div className="flex items-center gap-3">
                     <input
@@ -1662,6 +1931,8 @@ const hijriGreeting = useMemo(() => {
         src={murottalLink || null}
         onEnded={() => setIsPlayingMurottal(false)}
         onCanPlay={() => setIsBuffering(false)} // Matikan loading saat siap putar
+        onLoadedMetadata={handleLoadedMetadata}
+        onTimeUpdate={handleTimeUpdate}
         hidden
       />
 
@@ -1684,21 +1955,166 @@ const hijriGreeting = useMemo(() => {
                   Yuk login dulu Kak, biar hadits dan resep penuh berkah ini bisa Kakak simpan di koleksi favorit! ✨
                 </p>
               </div>
-              <div className="flex gap-3 w-full">
+              <div className="flex flex-col gap-3 w-full">
+                <h3 className="text-xl font-bold text-white mb-2">
+                  {isVerifying ? 'Verifikasi OTP' : (isRegistering ? 'Daftar Akun' : 'Login')}
+                </h3>
+                
+                {!isVerifying ? (
+                  <>
+                    <input
+                      type="email"
+                      placeholder="Email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20"
+                    />
+                    {isRegistering && (
+                      <input
+                        type="password"
+                        placeholder="Password (Min. 6 Karakter)"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20"
+                      />
+                    )}
+                  </>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="Masukkan Kode OTP"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20 text-center tracking-[0.5em] font-bold"
+                  />
+                )}
+
                 <button
-                  onClick={loginWithGoogle}
-                  className="flex-1 py-3 bg-gold text-islamic-green-dark rounded-xl font-black uppercase tracking-widest text-xs hover:bg-gold-light transition-all shadow-lg"
+                  onClick={handleAuth}
+                  disabled={isLoading}
+                  className="w-full py-3 bg-gold text-islamic-green-dark rounded-xl font-black uppercase tracking-widest text-xs hover:bg-gold-light transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Login Sekarang
+                  {isLoading ? (
+                    <div className="w-4 h-4 border-2 border-islamic-green-dark/30 border-t-islamic-green-dark rounded-full animate-spin" />
+                  ) : null}
+                  {isVerifying ? 'Verifikasi Kode' : (isRegistering ? 'Daftar Sekarang' : 'Kirim Kode OTP')}
                 </button>
+
+                {isVerifying && (
+                  <button
+                    onClick={sendOtp}
+                    disabled={countdown > 0}
+                    className={`w-full py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${countdown > 0 ? 'text-white/30 cursor-not-allowed' : 'text-gold hover:text-gold-light underline'}`}
+                  >
+                    {countdown > 0 ? `Kirim Ulang OTP dalam ${countdown}s` : 'Kirim Ulang OTP'}
+                  </button>
+                )}
+                
+                {!isVerifying && (
+                  <button
+                    onClick={() => setIsRegistering(!isRegistering)}
+                    className="text-gold text-xs underline"
+                  >
+                    {isRegistering ? 'Sudah punya akun? Login' : 'Belum punya akun? Daftar'}
+                  </button>
+                )}
+                
                 <button
-                  onClick={() => setShowLoginPrompt(false)}
-                  className="px-6 py-3 bg-white/5 text-white/60 rounded-xl font-bold text-xs hover:bg-white/10 transition-all"
+                  onClick={() => {
+                    setShowLoginPrompt(false);
+                    setIsVerifying(false);
+                    setOtp('');
+                  }}
+                  className="w-full py-3 bg-white/5 text-white/60 rounded-xl font-bold text-xs hover:bg-white/10 transition-all"
                 >
                   Nanti Saja
                 </button>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 20 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-0 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-xs"
+          >
+            <div className={`p-4 rounded-2xl shadow-2xl border flex items-center gap-3 ${
+              toast.type === 'success' ? 'bg-islamic-green-dark/90 border-gold/50 text-gold' : 'bg-red-900/90 border-red-500/50 text-red-200'
+            } backdrop-blur-md`}>
+              {toast.type === 'success' ? <Sparkles size={20} /> : <AlertCircle size={20} />}
+              <p className="text-xs font-bold leading-tight">{toast.message}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Profile Edit Modal */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[150] flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="glass-card bg-islamic-green-dark/95 border-gold/30 p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl relative"
+            >
+              <button 
+                onClick={() => setShowProfileModal(false)}
+                className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="flex flex-col items-center text-center gap-6">
+                <div className="w-20 h-20 bg-gold/10 rounded-full flex items-center justify-center text-gold border border-gold/20">
+                  <User size={40} />
+                </div>
+                
+                <div className="w-full space-y-4">
+                  <h2 className="text-2xl font-black text-white uppercase tracking-widest">Lengkapi Profil</h2>
+                  
+                  <div className="space-y-2 text-left">
+                    <label className="text-[10px] font-black text-gold uppercase tracking-widest ml-2">Nama Lengkap</label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Muhammad Fulan"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full p-4 bg-white/5 rounded-2xl text-white placeholder:text-white/20 border border-white/10 focus:border-gold/50 transition-all outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-2 text-left">
+                    <label className="text-[10px] font-black text-gold uppercase tracking-widest ml-2">Bio Singkat</label>
+                    <textarea
+                      placeholder="Tulis sedikit tentang dirimu..."
+                      value={bio}
+                      onChange={(e) => setBio(e.target.value)}
+                      className="w-full p-4 bg-white/5 rounded-2xl text-white placeholder:text-white/20 border border-white/10 focus:border-gold/50 transition-all outline-none h-24 resize-none"
+                    />
+                  </div>
+
+                  <button
+                    onClick={updateProfile}
+                    disabled={isLoading}
+                    className="w-full py-4 bg-gold text-islamic-green-dark rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-gold-light transition-all shadow-xl flex items-center justify-center gap-3"
+                  >
+                    {isLoading ? <div className="w-5 h-5 border-2 border-islamic-green-dark/30 border-t-islamic-green-dark rounded-full animate-spin" /> : <Save size={20} />}
+                    Simpan Perubahan
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1801,7 +2217,7 @@ const hijriGreeting = useMemo(() => {
                     <div className="flex justify-between items-start">
                       <h3 className="text-gold font-black uppercase tracking-widest text-xs">{doa.title}</h3>
                       <button 
-                        onClick={() => copyToClipboard(`${doa.title}\n\n${doa.arabic}\n\n${doa.translation}`, () => {})}
+                        onClick={() => copyToClipboard(`${doa.title}\n\n${doa.arabic}\n\n${doa.translation}\n\nRiwayat: ${doa.riwayat}`, () => {})}
                         className="p-2 text-gold/40 hover:text-gold transition-colors"
                       >
                         <Share2 size={16} />
@@ -1809,11 +2225,12 @@ const hijriGreeting = useMemo(() => {
                     </div>
                     <p className="text-3xl font-serif text-white leading-loose dir-rtl text-right">{doa.arabic}</p>
                     <p className="text-sm text-gold-light/80 italic leading-relaxed">{doa.translation}</p>
+                    <p className="text-[10px] text-gold/60 font-bold uppercase tracking-wider">Riwayat: {doa.riwayat}</p>
                     <button 
-                      onClick={() => speakSequence(doa.arabic, doa.translation, 'Doa Ramadan')}
+                      onClick={() => speakSequence(doa.arabic, doa.translation, doa.riwayat)}
                       className="flex items-center gap-2 text-[10px] font-black text-gold uppercase tracking-widest"
                     >
-                      <Volume2 size={14} /> Dengarkan
+                      <Volume2 size={14} /> Dengarkan Doa, Arti, & Riwayat
                     </button>
                   </div>
                 ))}
