@@ -186,27 +186,27 @@ const MUROTTAL_LINKS: Record<number, string> = {
 };
 
 const DOA_RAMADAN = [
-  { 
-    title: "Doa Buka Puasa", 
-    arabic: "ذَهَبَ الظَّمَأُ وَابْتَلَّتِ الْعُرُوقُ وَثَبَتَ الأَجْرُ إِنْ شَاءَ اللَّهُ", 
+  {
+    title: "Doa Buka Puasa",
+    arabic: "ذَهَبَ الظَّمَأُ وَابْتَلَّتِ الْعُرُوقُ وَثَبَتَ الأَجْرُ إِنْ شَاءَ اللَّهُ",
     translation: "Telah hilang rasa haus, telah basah urat-urat, dan telah tetap pahala, insya Allah.",
     riwayat: "HR. Abu Daud (No. 2357)."
   },
-  { 
-    title: "Niat Puasa Ramadan", 
-    arabic: "نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هَذِهِ السَّنَةِ لِلَّهِ تَعَالَى", 
+  {
+    title: "Niat Puasa Ramadan",
+    arabic: "نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هَذِهِ السَّنَةِ لِلَّهِ تَعَالَى",
     translation: "Aku niat berpuasa esok hari untuk menunaikan kewajiban bulan Ramadan tahun ini karena Allah Ta'ala.",
     riwayat: "Secara lafal, ini adalah susunan para ulama (khususnya Madzhab Syafi'i) untuk memantapkan niat di dalam hati. Dasarnya adalah hadits umum tentang niat: HR. Bukhari & Muslim ('Innamal a'malu binniyat')."
   },
-  { 
-    title: "Doa Lailatul Qadar", 
-    arabic: "اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي", 
+  {
+    title: "Doa Lailatul Qadar",
+    arabic: "اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي",
     translation: "Ya Allah, sesungguhnya Engkau Maha Pengampun dan menyukai ampunan, maka ampunilah aku.",
     riwayat: "HR. Tirmidzi (No. 3513) & Ibnu Majah (No. 3850). Status: Shahih. Ini adalah doa yang diajarkan Rasulullah SAW kepada Aisyah R.A."
   },
-  { 
-    title: "Doa Berbuka (Versi Lain)", 
-    arabic: "اَللّهُمَّ لَكَ صُمْتُ وَبِكَ آمَنْتُ وَعَلَى رِزْقِكَ أَفْطَرْتُ", 
+  {
+    title: "Doa Berbuka (Versi Lain)",
+    arabic: "اَللّهُمَّ لَكَ صُمْتُ وَبِكَ آمَنْتُ وَعَلَى رِزْقِكَ أَفْطَرْتُ",
     translation: "Ya Allah, untuk-Mu aku berpuasa, kepada-Mu aku beriman, dan dengan rezeki-Mu aku berbuka.",
     riwayat: "HR. Abu Daud (No. 2358). Status: Hadits ini sering digunakan, meski secara sanad dinilai mursal (lemah) oleh sebagian ulama, namun maknanya baik dan sudah sangat masyhur di masyarakat."
   },
@@ -356,7 +356,7 @@ export default function App() {
   const [showDoa, setShowDoa] = useState(false);
   const [showImsakiyahDetails, setShowImsakiyahDetails] = useState(false);
 
- // --- Global Hijriah Sync ---
+  // --- Global Hijriah Sync ---
   const masehiDate = useMemo(() => {
     return new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
   }, []);
@@ -403,46 +403,46 @@ export default function App() {
       }).format(new Date());
     } catch (e) {
       // Fallback jika Intl error
-      return "1 Ramadan 1447 H"; 
+      return "1 Ramadan 1447 H";
     }
   }, []);
 
-const hijriGreeting = useMemo(() => {
-  const isRamadan = checkIsRamadan();
-  const mYear = new Date().getFullYear();
+  const hijriGreeting = useMemo(() => {
+    const isRamadan = checkIsRamadan();
+    const mYear = new Date().getFullYear();
 
-  // --- LOGIKA PAKSA TAHUN HIJRIAH ---
-  // Rumus estimasi: (Tahun Masehi - 622) * (33/32)
-  // Ini bakal mastiin tahun 2026 dapetnya 1447, bukan 2026 lagi.
-  let hYear = Math.floor((mYear - 622) * (33 / 32));
-  
-  // Ambil Nama Bulan Hijriah dengan Fallback jika isRamadan true
-  let currentHijriMonth;
-  try {
-    currentHijriMonth = new Intl.DateTimeFormat('id-ID-u-ca-islamic-uma-nu-latn', { month: 'long' }).format(new Date());
-    // Jika ternyata browser ngasih nama bulan masehi (Maret), kita paksa jadi 'Ramadan'
-    if (isRamadan && !currentHijriMonth.toLowerCase().includes('ramada')) {
-      currentHijriMonth = "Ramadan";
+    // --- LOGIKA PAKSA TAHUN HIJRIAH ---
+    // Rumus estimasi: (Tahun Masehi - 622) * (33/32)
+    // Ini bakal mastiin tahun 2026 dapetnya 1447, bukan 2026 lagi.
+    let hYear = Math.floor((mYear - 622) * (33 / 32));
+
+    // Ambil Nama Bulan Hijriah dengan Fallback jika isRamadan true
+    let currentHijriMonth;
+    try {
+      currentHijriMonth = new Intl.DateTimeFormat('id-ID-u-ca-islamic-uma-nu-latn', { month: 'long' }).format(new Date());
+      // Jika ternyata browser ngasih nama bulan masehi (Maret), kita paksa jadi 'Ramadan'
+      if (isRamadan && !currentHijriMonth.toLowerCase().includes('ramada')) {
+        currentHijriMonth = "Ramadan";
+      }
+    } catch (e) {
+      currentHijriMonth = isRamadan ? "Ramadan" : "Syawal";
     }
-  } catch (e) {
-    currentHijriMonth = isRamadan ? "Ramadan" : "Syawal";
-  }
 
-  // Format Akhir: "1447 H / 2026"
-  const displayYearLabel = `${hYear} H / ${mYear}`;
+    // Format Akhir: "1447 H / 2026"
+    const displayYearLabel = `${hYear} H / ${mYear}`;
 
-  if (isRamadan) {
-    return {
-      title: `Ramadan Kareem ${mYear}`, 
-      subtitle: `Selamat Menunaikan Ibadah Puasa ${displayYearLabel}`
-    };
-  } else {
-    return {
-      title: "Selamat Menjalani Aktivitas",
-      subtitle: `Bulan ${currentHijriMonth} ${displayYearLabel}`
-    };
-  }
-}, [hijriDate, checkIsRamadan()]);
+    if (isRamadan) {
+      return {
+        title: `Ramadan Kareem ${mYear}`,
+        subtitle: `Selamat Menunaikan Ibadah Puasa ${displayYearLabel}`
+      };
+    } else {
+      return {
+        title: "Selamat Menjalani Aktivitas",
+        subtitle: `Bulan ${currentHijriMonth} ${displayYearLabel}`
+      };
+    }
+  }, [hijriDate, checkIsRamadan()]);
   const scheduleTitle = useMemo(() => {
     const ramadanDay = getRamadanDay();
     return ramadanDay ? `Ramadan Hari ke-${ramadanDay}` : "Jadwal Shalat Harian";
@@ -515,7 +515,7 @@ const hijriGreeting = useMemo(() => {
         .select('*')
         .eq('id', user.id)
         .single();
-      
+
       if (error && error.code !== 'PGRST116') throw error;
       if (data) {
         setFullName(data.full_name || '');
@@ -570,7 +570,7 @@ const hijriGreeting = useMemo(() => {
           email,
           password: password || 'dummy_password_123',
         });
-        
+
         if (error) {
           if (error.message.toLowerCase().includes('already registered') || error.message.toLowerCase().includes('user already exists')) {
             showToast("Email sudah terdaftar! Silakan login.", 'error');
@@ -623,7 +623,7 @@ const hijriGreeting = useMemo(() => {
           type: isRegistering ? 'signup' : 'email',
         });
         if (error) throw error;
-        
+
         showToast("Selamat Datang di LisanulHaq! ✨");
         setShowLoginPrompt(false);
         setIsVerifying(false);
@@ -635,10 +635,10 @@ const hijriGreeting = useMemo(() => {
     } catch (err: any) {
       if (err.message?.toLowerCase().includes('rate limit')) {
         showToast("Batas pengiriman email tercapai. Mohon tunggu beberapa saat.", 'error');
-      } else if (err.message?.toLowerCase().includes('user not found') || 
-                 err.message?.toLowerCase().includes('not found') ||
-                 err.message?.toLowerCase().includes('invalid login credentials') ||
-                 err.message?.includes('Signups not allowed for otp')) {
+      } else if (err.message?.toLowerCase().includes('user not found') ||
+        err.message?.toLowerCase().includes('not found') ||
+        err.message?.toLowerCase().includes('invalid login credentials') ||
+        err.message?.includes('Signups not allowed for otp')) {
         showToast("Mohon maaf email anda belum terdaftar", 'error');
       } else {
         showToast(err.message || "Gagal memproses.", 'error');
@@ -668,20 +668,20 @@ const hijriGreeting = useMemo(() => {
         const { data: { publicUrl } } = supabase.storage
           .from('avatars')
           .getPublicUrl(filePath);
-        
+
         finalAvatarUrl = publicUrl;
       }
 
       const { error } = await supabase
         .from('profiles')
-        .upsert({ 
+        .upsert({
           id: user.id,
-          full_name: fullName, 
+          full_name: fullName,
           bio: bio,
           avatar_url: finalAvatarUrl,
           updated_at: new Date().toISOString()
         });
-      
+
       if (error) throw error;
       setAvatarUrl(finalAvatarUrl);
       showToast("Profil berhasil diperbarui! 🌿");
@@ -801,37 +801,37 @@ const hijriGreeting = useMemo(() => {
       setIsGoldLoading(true);
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-        // Try primary API
-        try {
-          const res = await fetch('https://logam-mulia-api.vercel.app/prices/antam', {
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
+        // Menggunakan proxy untuk menghindari CORS dan cache buster agar data selalu fresh (dinamis)
+        const targetUrl = `https://logam-mulia-api.vercel.app/prices/antam?t=${Date.now()}`;
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
 
-          if (res.ok) {
-            const data = await res.json();
-            if (data?.data?.[0]?.price) {
-              setGoldPrice(data.data[0].price);
-              setIsGoldLoading(false);
-              return;
-            }
+        const res = await fetch(proxyUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const wrapper = await res.json();
+          const data = JSON.parse(wrapper.contents);
+
+          if (data?.data?.[0]?.price) {
+            setGoldPrice(data.data[0].price);
+            setIsGoldLoading(false);
+            return;
           }
-        } catch (primaryError) {
-          console.log("Primary gold API failed, trying secondary...");
         }
-
-        // Secondary API or Fallback
-        setGoldPrice(3171000);
       } catch (e) {
-        // Silent fallback to avoid console noise if it's a common network issue
-        setGoldPrice(3171000);
+        // Fallback jika API gagal, tanpa log error yang mengganggu console
+        if (!goldPrice) setGoldPrice(3171000);
       } finally {
         setIsGoldLoading(false);
       }
     };
+
     fetchGoldPrice();
+    // Update otomatis setiap 15 menit agar harga tetap dinamis
+    const interval = setInterval(fetchGoldPrice, 15 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   // --- Logic ---
@@ -910,7 +910,7 @@ const hijriGreeting = useMemo(() => {
   const speakSequence = (arabic: string, translation: string, riwayat: string, type: 'hadith' | 'doa' | 'food' = 'hadith', onFinish?: () => void) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      
+
       // Clean text from asterisks (don't read "asterisk")
       const clean = (text: string) => (text || '').replace(/\*/g, '');
 
@@ -925,7 +925,7 @@ const hijriGreeting = useMemo(() => {
 
       if (type === 'doa') {
         arabicRate = 0.5; // Slower for Doa
-        pitch = 1.05; 
+        pitch = 1.05;
       } else if (type === 'food') {
         arabicRate = 1.0; // Normal rate for food instructions
       }
@@ -1053,7 +1053,7 @@ const hijriGreeting = useMemo(() => {
 
   const toggleMurottal = () => {
     if (!murottalRef.current) return;
-    
+
     if (isPlayingMurottal) {
       murottalRef.current.pause();
       setIsPlayingMurottal(false);
@@ -1159,11 +1159,11 @@ const hijriGreeting = useMemo(() => {
       alert("Masukkan menit yang valid, Akhi.");
       return;
     }
-    
+
     if (murottalRef.current) {
       const seconds = minutes * 60;
       const duration = murottalRef.current.duration;
-      
+
       if (isNaN(duration)) {
         alert("Audio belum siap, tunggu sebentar ya.");
         return;
@@ -1253,7 +1253,7 @@ const hijriGreeting = useMemo(() => {
               <span className="text-sm font-black uppercase tracking-widest text-gold leading-none mt-1">{hijriDate}</span>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-10">
             {Object.entries(PRAYER_TIMES).map(([name, time]) => (
               <div key={name} className="flex flex-col items-center min-w-[60px]">
@@ -1323,7 +1323,7 @@ const hijriGreeting = useMemo(() => {
               )}
             </div>
 
-            <button 
+            <button
               onClick={() => setShowImsakiyahDetails(true)}
               className="p-2.5 bg-white/5 hover:bg-gold/10 rounded-2xl text-gold transition-all border border-gold/20"
             >
@@ -1380,7 +1380,7 @@ const hijriGreeting = useMemo(() => {
         >
           {/* Quick Menu Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto w-full">
-            <button 
+            <button
               onClick={() => document.getElementById('juz-tracker')?.scrollIntoView({ behavior: 'smooth' })}
               className="glass-card p-5 rounded-[2rem] border border-gold/20 flex flex-col items-center gap-3 hover:bg-gold/10 transition-all group shadow-xl"
             >
@@ -1389,7 +1389,7 @@ const hijriGreeting = useMemo(() => {
               </div>
               <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">Juz Tracker</span>
             </button>
-            <button 
+            <button
               onClick={() => document.getElementById('tarawih-tracker')?.scrollIntoView({ behavior: 'smooth' })}
               className="glass-card p-5 rounded-[2rem] border border-gold/20 flex flex-col items-center gap-3 hover:bg-gold/10 transition-all group shadow-xl"
             >
@@ -1398,7 +1398,7 @@ const hijriGreeting = useMemo(() => {
               </div>
               <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">{checkIsRamadan() ? 'Tarawih' : 'Qiyamul Lail'}</span>
             </button>
-            <button 
+            <button
               onClick={() => setShowDoa(true)}
               className="glass-card p-5 rounded-[2rem] border border-gold/20 flex flex-col items-center gap-3 hover:bg-gold/10 transition-all group shadow-xl"
             >
@@ -1407,7 +1407,7 @@ const hijriGreeting = useMemo(() => {
               </div>
               <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">Kumpulan Doa</span>
             </button>
-            <button 
+            <button
               onClick={() => setShowTasbih(true)}
               className="glass-card p-5 rounded-[2rem] border border-gold/20 flex flex-col items-center gap-3 hover:bg-gold/10 transition-all group shadow-xl"
             >
@@ -1487,7 +1487,7 @@ const hijriGreeting = useMemo(() => {
                   <button
                     onClick={() => {
                       const h = aiHadith || randomHadith;
-                      copyToClipboard(`${h.arabic}\n\n${h.translation}\n\nSumber: ${h.source}`, () => {});
+                      copyToClipboard(`${h.arabic}\n\n${h.translation}\n\nSumber: ${h.source}`, () => { });
                     }}
                     className="p-2 bg-gold/10 text-gold rounded-full hover:bg-gold/20 transition-all"
                     title="Bagikan Kebaikan"
@@ -1753,10 +1753,10 @@ const hijriGreeting = useMemo(() => {
                       ) : (
                         <Headphones size={14} />
                       )}
-                      {isBuffering ? 'Memuat...' : 
-                       (murottalLink === MUROTTAL_LINKS[currentJuz] && isPlayingMurottal) ? `Jeda Murottal Juz ${currentJuz}` :
-                       (murottalLink === MUROTTAL_LINKS[currentJuz] && !isPlayingMurottal) ? `Lanjutkan Juz ${currentJuz}` :
-                       `Putar Murottal Juz ${currentJuz}`}
+                      {isBuffering ? 'Memuat...' :
+                        (murottalLink === MUROTTAL_LINKS[currentJuz] && isPlayingMurottal) ? `Jeda Murottal Juz ${currentJuz}` :
+                          (murottalLink === MUROTTAL_LINKS[currentJuz] && !isPlayingMurottal) ? `Lanjutkan Juz ${currentJuz}` :
+                            `Putar Murottal Juz ${currentJuz}`}
                     </motion.button>
 
                     {/* Integrated Murottal Player */}
@@ -2051,7 +2051,7 @@ const hijriGreeting = useMemo(() => {
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       <audio
         ref={murottalRef}
         // Gunakan null jika murottalLink kosong, jangan string ""
@@ -2086,7 +2086,7 @@ const hijriGreeting = useMemo(() => {
                 <h3 className="text-xl font-bold text-white mb-2">
                   {isVerifying ? 'Verifikasi OTP' : (isRegistering ? 'DAFTAR' : 'LOGIN')}
                 </h3>
-                
+
                 {!isVerifying ? (
                   <>
                     <input
@@ -2096,10 +2096,10 @@ const hijriGreeting = useMemo(() => {
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20"
                     />
-                    
+
                     <div className="flex items-center gap-2 ml-2 mb-2">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         id="rememberMe"
                         checked={rememberMe}
                         onChange={(e) => setRememberMe(e.target.checked)}
@@ -2150,7 +2150,7 @@ const hijriGreeting = useMemo(() => {
                     {countdown > 0 ? `Kirim Ulang OTP dalam ${countdown}s` : 'Kirim Ulang OTP'}
                   </button>
                 )}
-                
+
                 {!isVerifying && (
                   <button
                     onClick={() => setIsRegistering(!isRegistering)}
@@ -2159,7 +2159,7 @@ const hijriGreeting = useMemo(() => {
                     {isRegistering ? 'Sudah punya akun? Login' : 'Belum punya akun? Daftar'}
                   </button>
                 )}
-                
+
                 <button
                   onClick={() => {
                     setShowLoginPrompt(false);
@@ -2185,9 +2185,8 @@ const hijriGreeting = useMemo(() => {
             exit={{ opacity: 0, y: -50 }}
             className="fixed top-0 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-xs"
           >
-            <div className={`p-4 rounded-2xl shadow-2xl border flex items-center gap-3 ${
-              toast.type === 'success' ? 'bg-islamic-green-dark/90 border-gold/50 text-gold' : 'bg-red-900/90 border-red-500/50 text-red-200'
-            } backdrop-blur-md`}>
+            <div className={`p-4 rounded-2xl shadow-2xl border flex items-center gap-3 ${toast.type === 'success' ? 'bg-islamic-green-dark/90 border-gold/50 text-gold' : 'bg-red-900/90 border-red-500/50 text-red-200'
+              } backdrop-blur-md`}>
               {toast.type === 'success' ? <Sparkles size={20} /> : <AlertCircle size={20} />}
               <p className="text-xs font-bold leading-tight">{toast.message}</p>
             </div>
@@ -2209,7 +2208,7 @@ const hijriGreeting = useMemo(() => {
               animate={{ scale: 1, y: 0 }}
               className="glass-card bg-islamic-green-dark/95 border-gold/30 p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl relative"
             >
-              <button 
+              <button
                 onClick={() => setShowProfileModal(false)}
                 className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors"
               >
@@ -2230,11 +2229,11 @@ const hijriGreeting = useMemo(() => {
                     <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
                   </label>
                 </div>
-                
+
                 <div className="w-full space-y-4">
                   <h2 className="text-2xl font-black text-white uppercase tracking-widest">Lengkapi Profil</h2>
                   <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] -mt-2">Maksimal Ukuran Gambar 1MB</p>
-                  
+
                   <div className="space-y-2 text-left">
                     <label className="text-[10px] font-black text-gold uppercase tracking-widest ml-2">Nama Lengkap</label>
                     <input
@@ -2280,20 +2279,20 @@ const hijriGreeting = useMemo(() => {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[200] bg-islamic-green-dark flex flex-col items-center justify-center p-6"
           >
-            <button 
+            <button
               onClick={() => setShowTasbih(false)}
               className="absolute top-8 right-8 p-4 text-gold hover:bg-gold/10 rounded-full transition-all"
             >
               <X size={32} />
             </button>
-            
+
             <div className="text-center space-y-12 w-full max-w-md">
               <div className="space-y-2">
                 <h2 className="text-gold font-black uppercase tracking-[0.3em] text-sm">Tasbih Digital</h2>
                 <p className="text-white/40 text-xs italic">Ketuk di mana saja untuk menghitung</p>
               </div>
 
-              <motion.div 
+              <motion.div
                 key={tasbihCount}
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -2303,13 +2302,13 @@ const hijriGreeting = useMemo(() => {
               </motion.div>
 
               <div className="flex gap-4">
-                <button 
+                <button
                   onClick={() => setTasbihCount(0)}
                   className="flex-1 py-4 bg-white/5 border border-gold/20 text-gold rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-gold/10 transition-all"
                 >
                   Reset
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     setTasbihCount(prev => prev + 1);
                     if ('vibrate' in navigator) navigator.vibrate(50);
@@ -2322,8 +2321,8 @@ const hijriGreeting = useMemo(() => {
             </div>
 
             {/* Full screen invisible click area for easier counting */}
-            <div 
-              className="absolute inset-0 z-[-1]" 
+            <div
+              className="absolute inset-0 z-[-1]"
               onClick={() => {
                 setTasbihCount(prev => prev + 1);
                 if ('vibrate' in navigator) navigator.vibrate(50);
@@ -2337,7 +2336,7 @@ const hijriGreeting = useMemo(() => {
       <AnimatePresence>
         {showDoa && (
           <>
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -2368,8 +2367,8 @@ const hijriGreeting = useMemo(() => {
                   <div key={idx} className="glass-card p-6 rounded-3xl border border-gold/10 space-y-4">
                     <div className="flex justify-between items-start">
                       <h3 className="text-gold font-black uppercase tracking-widest text-xs">{doa.title}</h3>
-                      <button 
-                        onClick={() => copyToClipboard(`${doa.title}\n\n${doa.arabic}\n\n${doa.translation}\n\nRiwayat: ${doa.riwayat}`, () => {})}
+                      <button
+                        onClick={() => copyToClipboard(`${doa.title}\n\n${doa.arabic}\n\n${doa.translation}\n\nRiwayat: ${doa.riwayat}`, () => { })}
                         className="p-2 text-gold/40 hover:text-gold transition-colors"
                       >
                         <Share2 size={16} />
@@ -2378,7 +2377,7 @@ const hijriGreeting = useMemo(() => {
                     <p className="text-3xl font-serif text-white leading-loose dir-rtl text-right">{doa.arabic}</p>
                     <p className="text-sm text-gold-light/80 italic leading-relaxed">{doa.translation}</p>
                     <p className="text-[10px] text-gold/60 font-bold uppercase tracking-wider">Riwayat: {doa.riwayat}</p>
-                    <button 
+                    <button
                       onClick={() => speakSequence(doa.arabic, doa.translation, doa.riwayat, 'doa')}
                       className="flex items-center gap-2 text-[10px] font-black text-gold uppercase tracking-widest"
                     >
@@ -2396,7 +2395,7 @@ const hijriGreeting = useMemo(() => {
       <AnimatePresence>
         {showImsakiyahDetails && (
           <>
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -2420,7 +2419,7 @@ const hijriGreeting = useMemo(() => {
                   <X size={24} />
                 </button>
               </div>
-              
+
               <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
                 <div className="bg-gold/5 border border-gold/20 p-6 rounded-3xl text-center space-y-2">
                   <p className="text-gold font-black uppercase tracking-widest text-[10px]">Hari Ini</p>
