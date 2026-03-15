@@ -38,7 +38,9 @@ import {
   X,
   Calendar,
   AlertCircle,
-  Save
+  Save,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 // --- Supabase Initialization ---
@@ -491,6 +493,11 @@ export default function App() {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [isOtpVerified, setIsOtpVerified] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [pendingVerifications, setPendingVerifications] = useState<Record<string, { type: 'signup' | 'recovery', timestamp: number }>>(() => {
+    const saved = localStorage.getItem('pending_verifications');
+    return saved ? JSON.parse(saved) : {};
+  });
   const [resetRequests, setResetRequests] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('reset_requests');
     return saved ? JSON.parse(saved) : {};
@@ -499,6 +506,28 @@ export default function App() {
   const [countdown, setCountdown] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const otpInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus OTP input when verifying
+  useEffect(() => {
+    if (isVerifying && otpInputRef.current) {
+      otpInputRef.current.focus();
+    }
+  }, [isVerifying]);
+
+  const getPasswordStrength = (pwd: string) => {
+    if (!pwd) return { label: '', color: 'bg-transparent', width: '0%' };
+    if (pwd.length < 6) return { label: 'Terlalu Pendek', color: 'bg-red-500', width: '33%' };
+    const hasLetters = /[a-zA-Z]/.test(pwd);
+    const hasNumbers = /[0-9]/.test(pwd);
+    const hasSpecial = /[^a-zA-Z0-9]/.test(pwd);
+    
+    if (hasLetters && hasNumbers && hasSpecial && pwd.length >= 8) 
+      return { label: 'Sangat Kuat', color: 'bg-emerald-500', width: '100%' };
+    if (hasLetters && hasNumbers) 
+      return { label: 'Kuat', color: 'bg-gold', width: '66%' };
+    return { label: 'Lemah', color: 'bg-yellow-500', width: '50%' };
+  };
 
   // Profile States
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -641,6 +670,12 @@ export default function App() {
           setIsVerifying(false);
           setIsOtpVerified(true);
           showToast("OTP Berhasil! Silakan masukkan password baru.");
+
+          // Clear pending
+          const newPending: Record<string, { type: 'signup' | 'recovery', timestamp: number }> = { ...pendingVerifications };
+          delete newPending[email];
+          setPendingVerifications(newPending);
+          localStorage.setItem('pending_verifications', JSON.stringify(newPending));
         } else if (isOtpVerified) {
           if (!newPassword || newPassword.length < 6) {
             showToast("Password baru minimal 6 karakter.", 'error');
@@ -653,15 +688,26 @@ export default function App() {
           }));
           if (error) throw error;
           
-          showToast("Password berhasil diperbarui! Silakan login.");
+          showToast("Password berhasil diperbarui! Selamat datang ✨");
           setIsForgotPassword(false);
           setIsOtpVerified(false);
+          setShowLoginPrompt(false);
           setNewPassword('');
           setPassword('');
           setOtp('');
         } else {
-          // Send Reset OTP
+          // Check pending first
+          const pending = pendingVerifications[email];
           const now = Date.now();
+          if (pending && pending.type === 'recovery' && (now - pending.timestamp < 15 * 60 * 1000)) {
+            setIsVerifying(true);
+            setCountdown(60);
+            showToast("Melanjutkan pemulihan password Anda ✨");
+            setIsLoading(false);
+            return;
+          }
+
+          // Send Reset OTP
           const lastRequest = resetRequests[email] || 0;
           const oneHour = 60 * 60 * 1000;
           if (now - lastRequest < oneHour) {
@@ -678,6 +724,10 @@ export default function App() {
           setResetRequests(newRequests);
           localStorage.setItem('reset_requests', JSON.stringify(newRequests));
           
+          const newPending: Record<string, { type: 'signup' | 'recovery', timestamp: number }> = { ...pendingVerifications, [email]: { type: 'recovery', timestamp: now } };
+          setPendingVerifications(newPending);
+          localStorage.setItem('pending_verifications', JSON.stringify(newPending));
+
           setIsVerifying(true);
           setCountdown(60);
           showToast("Kode OTP pemulihan telah dikirim ke email Anda ✨");
@@ -696,13 +746,34 @@ export default function App() {
           setIsRegistering(false);
           setIsVerifying(false);
           setOtp('');
+
+          // Clear pending
+          const newPending: Record<string, { type: 'signup' | 'recovery', timestamp: number }> = { ...pendingVerifications };
+          delete newPending[email];
+          setPendingVerifications(newPending);
+          localStorage.setItem('pending_verifications', JSON.stringify(newPending));
         } else {
+          // Check pending first
+          const pending = pendingVerifications[email];
+          const now = Date.now();
+          if (pending && pending.type === 'signup' && (now - pending.timestamp < 15 * 60 * 1000)) {
+            setIsVerifying(true);
+            setCountdown(60);
+            showToast("Melanjutkan pendaftaran email Anda ✨");
+            setIsLoading(false);
+            return;
+          }
+
           const { error } = await withTimeout(supabase.auth.signUp({
             email,
             password,
           }));
           if (error) throw error;
           
+          const newPending: Record<string, { type: 'signup' | 'recovery', timestamp: number }> = { ...pendingVerifications, [email]: { type: 'signup', timestamp: now } };
+          setPendingVerifications(newPending);
+          localStorage.setItem('pending_verifications', JSON.stringify(newPending));
+
           setIsVerifying(true);
           setCountdown(60);
           showToast("Kode verifikasi telah dikirim ke email Anda ✨");
@@ -2154,7 +2225,7 @@ export default function App() {
 
       {/* Login Prompt Popup */}
       <AnimatePresence>
-        {showLoginPrompt && !user && (
+        {showLoginPrompt && (!user || isOtpVerified) && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 50 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -2189,13 +2260,42 @@ export default function App() {
                     />
 
                     {!isForgotPassword && (
-                      <input
-                        type="password"
-                        placeholder="Password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20"
-                      />
+                      <div className="space-y-2">
+                        <div className="relative">
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            placeholder="Password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20 pr-12"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
+                          >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
+                        
+                        {isRegistering && password && (
+                          <div className="px-1 space-y-1">
+                            <div className="flex justify-between items-center">
+                              <span className="text-[8px] text-white/40 uppercase font-bold tracking-widest">Kekuatan Password</span>
+                              <span className={`text-[8px] font-bold uppercase tracking-widest ${getPasswordStrength(password).color.replace('bg-', 'text-')}`}>
+                                {getPasswordStrength(password).label}
+                              </span>
+                            </div>
+                            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: getPasswordStrength(password).width }}
+                                className={`h-full ${getPasswordStrength(password).color} transition-all duration-500`}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
 
                     {!isForgotPassword && (
@@ -2225,6 +2325,7 @@ export default function App() {
                   <div className="space-y-4">
                     <p className="text-[10px] text-white/60 text-center uppercase tracking-widest">Masukkan kode yang dikirim ke email Anda</p>
                     <input
+                      ref={otpInputRef}
                       type="text"
                       placeholder="OTP"
                       value={otp}
@@ -2235,13 +2336,22 @@ export default function App() {
                 ) : (
                   <div className="space-y-4">
                     <p className="text-[10px] text-white/60 text-center uppercase tracking-widest">Masukkan password baru Anda</p>
-                    <input
-                      type="password"
-                      placeholder="Password Baru"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Password Baru"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full p-3 bg-white/10 rounded-xl text-white placeholder:text-white/30 border border-gold/20 pr-12"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -2259,13 +2369,25 @@ export default function App() {
                 </button>
 
                 {isVerifying && (
-                  <button
-                    onClick={resendOtp}
-                    disabled={countdown > 0 || isLoading}
-                    className={`w-full py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${countdown > 0 ? 'text-white/30 cursor-not-allowed' : 'text-gold hover:text-gold-light underline'}`}
-                  >
-                    {countdown > 0 ? `Kirim Ulang OTP dalam ${countdown}s` : 'Kirim Ulang OTP'}
-                  </button>
+                  <div className="flex flex-col gap-2 w-full">
+                    <button
+                      onClick={resendOtp}
+                      disabled={countdown > 0 || isLoading}
+                      className={`w-full py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${countdown > 0 ? 'text-white/30 cursor-not-allowed' : 'text-gold hover:text-gold-light underline'}`}
+                    >
+                      {countdown > 0 ? `Kirim Ulang OTP dalam ${countdown}s` : 'Kirim Ulang OTP'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsVerifying(false);
+                        setOtp('');
+                        // We don't clear pendingVerifications here so they can still resume if they come back to this email
+                      }}
+                      className="text-white/40 text-[10px] font-bold uppercase tracking-widest hover:text-white"
+                    >
+                      Ganti Email / Kembali
+                    </button>
+                  </div>
                 )}
 
                 {isForgotPassword && !isVerifying && !isOtpVerified && (
